@@ -1,26 +1,25 @@
-# DAO Contract – User Guide
+# Oinoko DAO – User Guide
 
-This smart contract powers community-led projects on the VSC network.  
-It allows people to create projects, join them, make proposals, vote on them, and manage shared funds — all in a transparent, on-chain way.
+This smart contract powers community-driven projects on the vsc network. It allows users to create projects, join them, make proposals, vote on proposals, and manage shared funds — all in a transparent, on-chain way powered by vsc smart contracts.
 
 ---
 
 ## 1. What You Can Do
 
 - **Create a Project**  
-  Start your own community project with a name, description, voting rules, and a shared treasury.  
+  Start your own community project with a name, description, voting rules, and a shared treasury.
   You decide:
   - Who can make proposals (just you, or all members)
   - How members join (fixed fee for equal voting or stake-based for weighted voting)
   - The percentage of votes needed for approval
   - Proposal cost (goes into project funds)
   - Proposal duration
-  - Minimum/Exact join amounts
+  - Minimum/Exact join amounts needed for users to join
   - Optional: Enable/disable features like reward distribution, secret voting, and more
 
 - **Join a Project**  
-  Become a member by sending the required join amount (set by the project).  
-  - In **Democratic voting** projects, every member’s vote counts equally.  
+  Become a member by sending the required join amount (set by the project).
+  - In **Democratic voting** projects, every member’s vote counts equally.
   - In **Stake-based voting**, your vote weight depends on your contribution amount.
 
 - **Make a Proposal**  
@@ -29,6 +28,7 @@ It allows people to create projects, join them, make proposals, vote on them, an
   - **Yes/No** (can also execute fund transfers if approved)
   - **Single Choice Poll**
   - **Multiple Choice Poll**
+  
   Every proposal has:
   - Title, description, and extra metadata (for future features)
   - Duration for voting
