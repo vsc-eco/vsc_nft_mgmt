@@ -390,7 +390,7 @@ func removeVote(projectID, proposalID, voter string) {
 ////////////////////////////////////////////////////////////////////////////////
 
 // CreateProject - create a new project with configuration. Returns generated project ID.
-//go:wasmexport entrypoint
+//go:wasmexport projects_create
 func CreateProject(name, description, jsonMetadata string, cfg ProjectConfig) string {
 	env := sdk.GetEnv()
 	creator := env.Sender.Address.String()
@@ -427,7 +427,7 @@ func CreateProject(name, description, jsonMetadata string, cfg ProjectConfig) st
 }
 
 // GetProject - returns the project object (no proposals included)
-//go:wasmexport entrypoint
+//go:wasmexport projects_get_one
 func GetProject(projectID string) *Project {
 	p, err := loadProject(projectID)
 	if err != nil {
@@ -437,7 +437,7 @@ func GetProject(projectID string) *Project {
 }
 
 // GetAllProjects - returns all projects (IDs then loads each)
-//go:wasmexport entrypoint
+//go:wasmexport projects_get_all
 func GetAllProjects() []*Project {
 	ids := listAllProjectIDs()
 	out := make([]*Project, 0, len(ids))
@@ -450,7 +450,7 @@ func GetAllProjects() []*Project {
 }
 
 // AddFunds - draw funds from caller and add to project's pool
-//go:wasmexport entrypoint
+//go:wasmexport projects_add_funds
 func AddFunds(projectID string, amount int64, asset string) {
 	if amount <= 0 {
 		sdk.Log("AddFunds: amount must be > 0")
@@ -469,7 +469,7 @@ func AddFunds(projectID string, amount int64, asset string) {
 }
 
 // JoinProject - join with funds according to voting system rules
-//go:wasmexport entrypoint
+//go:wasmexport projects_join
 func JoinProject(projectID string, amount int64, asset string) {
 	env := sdk.GetEnv()
 	caller := env.Sender.Address.String()
@@ -536,7 +536,7 @@ func JoinProject(projectID string, amount int64, asset string) {
 }
 
 // LeaveProject - request exit or withdraw (if lockup passed)
-//go:wasmexport entrypoint
+//go:wasmexport projects_leave
 func LeaveProject(projectID string, withdrawAmount int64, asset string) {
 	env := sdk.GetEnv()
 	caller := env.Sender.Address.String()
@@ -616,7 +616,7 @@ func LeaveProject(projectID string, withdrawAmount int64, asset string) {
 
 // CreateProposal - stores proposal separately and updates project index.
 // caller must be allowed by project config to create proposals; caller pays proposal cost via HiveDraw.
-//go:wasmexport entrypoint
+//go:wasmexport proposals_create
 func CreateProposal(projectID, name, description, jsonMetadata, category string,
 	vtype VotingType, options []string, receiver string, amount int64) (string, error) {
 
@@ -715,7 +715,7 @@ func CreateProposal(projectID, name, description, jsonMetadata, category string,
 
 // VoteProposal - cast a vote or store commit hash if secret voting is enabled.
 // For yes/no: choices are [0]=no or [1]=yes
-//go:wasmexport entrypoint
+//go:wasmexport proposals_vote
 func VoteProposal(projectID, proposalID string, choices []int, commitHash string) error {
 	env := sdk.GetEnv()
 	caller := env.Sender.Address.String()
@@ -812,7 +812,7 @@ func VoteProposal(projectID, proposalID string, choices []int, commitHash string
 
 // RevealVote - reveal a previously committed vote (secret voting).
 // revealOption argument must match commit (implementation uses a simple hash).
-//go:wasmexport entrypoint
+//go:wasmexport proposals_vote_reveal
 func RevealVote(projectID, proposalID, revealOption, salt string) error {
 	env := sdk.GetEnv()
 	caller := env.Sender.Address.String()
@@ -892,7 +892,7 @@ func RevealVote(projectID, proposalID, revealOption, salt string) error {
 }
 
 // TallyProposal - compute pass/fail/quorum and update proposal state (persisted)
-//go:wasmexport entrypoint
+//go:wasmexport proposals_tally
 func TallyProposal(projectID, proposalID string) (bool, error) {
 	p, err := loadProject(projectID)
 	if err != nil {
@@ -989,7 +989,7 @@ func TallyProposal(projectID, proposalID string) (bool, error) {
 
 // ExecuteProposal - executes transfers or meta actions for an executable proposal.
 // Only yes/no proposals may transfer funds by requirement; meta proposals may change project config.
-//go:wasmexport entrypoint
+//go:wasmexport proposals_execute
 func ExecuteProposal(projectID, proposalID, asset string) error {
 	env := sdk.GetEnv()
 	caller := env.Sender.Address.String()
@@ -1104,7 +1104,7 @@ func ExecuteProposal(projectID, proposalID, asset string) error {
 }
 
 // GetProposal - returns a proposal by id (useful for UIs)
-//go:wasmexport entrypoint
+//go:wasmexport proposals_get_one
 func GetProposal(proposalID string) *Proposal {
 	pr, err := loadProposal(proposalID)
 	if err != nil {
@@ -1114,7 +1114,7 @@ func GetProposal(proposalID string) *Proposal {
 }
 
 // GetProjectProposals - return proposal objects for a project (can be paginated later)
-//go:wasmexport entrypoint
+//go:wasmexport proposals_get_all
 func GetProjectProposals(projectID string) []Proposal {
 	ids := listProposalIDsForProject(projectID)
 	out := make([]Proposal, 0, len(ids))
@@ -1127,7 +1127,7 @@ func GetProjectProposals(projectID string) []Proposal {
 }
 
 // TransferProjectOwnership - only creator can transfer
-//go:wasmexport entrypoint
+//go:wasmexport projects_transfer_ownership
 func TransferProjectOwnership(projectID, newOwner string) error {
 	env := sdk.GetEnv()
 	caller := env.Sender.Address.String()
@@ -1156,7 +1156,7 @@ func TransferProjectOwnership(projectID, newOwner string) error {
 }
 
 // EmergencyPauseImmediate - creator-only set pause state
-//go:wasmexport entrypoint
+//go:wasmexport projects_pause
 func EmergencyPauseImmediate(projectID string, pause bool) error {
 	env := sdk.GetEnv()
 	caller := env.Sender.Address.String()
@@ -1175,7 +1175,7 @@ func EmergencyPauseImmediate(projectID string, pause bool) error {
 }
 
 // RemoveProject - deletes project and all its proposals and votes (creator only)
-//go:wasmexport entrypoint
+//go:wasmexport projects_remove
 func RemoveProject(projectID string) error {
 	env := sdk.GetEnv()
 	caller := env.Sender.Address.String()

@@ -70,16 +70,20 @@ When voting ends:
 
 From your wallet or UI, you can:
 
-| Action            | Description |
-|-------------------|-------------|
-| `create_project`  | Start a new project |
-| `join_project`    | Become a member by paying the join amount |
-| `create_proposal` | Suggest an action/question |
-| `vote`            | Cast your vote |
-| `get_projects`    | View all projects |
-| `get_proposals`   | View all proposals for a project |
-| `get_results`     | See how proposals ended |
-| `send_funds`      | Add more to the treasury |
+| Action                 | Description |
+|------------------------|-------------|
+| `projects_create`      | Start a new project |
+| `projects_get_all`     | View all projects |
+| `projects_get_one`     | View one project |
+| `projects_join`        | Become a member by paying the join amount |
+| `projects_add_funds`   | Add fuds to the project's treasury 
+| `proposals_create`     | Suggest an action/question |
+| `proposals_get_all`    | View all proposals for a project |
+| `proposals_get_one`    | View proposal |
+| `proposals_vote`       | Cast your vote |
+| `proposals_tally`      | Compute Pass / Fail / Quorum proposal state |
+| `proposals_execute`    | Execute proposal if transfer or meta proposal |
+
 
 ---
 
