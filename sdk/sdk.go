@@ -1,8 +1,8 @@
 package sdk
 
 import (
-	_ "contract-template/runtime"
 	"encoding/json"
+	_ "okinoko_dao/runtime"
 	"strconv"
 )
 

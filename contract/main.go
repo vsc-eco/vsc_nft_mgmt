@@ -1,7 +1,7 @@
-//////////////////////////////////////////////
-//////// Okinoko DAO: A universal DAO ////////
-//////// created by tibfox 2025-08-12 ////////
-//////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+// Okinoko DAO: A universal DAO for the vsc network
+// created by tibfox 2025-08-12
+////////////////////////////////////////////////////////////////////////////////
 
 package main
 
@@ -10,34 +10,32 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"okinoko_dao/sdk"
 	"strconv"
 	"strings"
 	"time"
-	"okinoko_dao/sdk"
 )
 
-
-
 ////////////////////////////////////////////////////////////////////////////////
-// Types
+// Types & Structs
 ////////////////////////////////////////////////////////////////////////////////
 
 // Voting system for a project
 type VotingSystem string
 
 const (
-	SystemDemocratic VotingSystem = "democratic"
-	SystemStake      VotingSystem = "stake_based"
+	SystemDemocratic VotingSystem = "democratic"  // every member has an equal vote
+	SystemStake      VotingSystem = "stake_based" // ever member has a different vote weight - based on the stake in the project treasury fund
 )
 
 // Proposal types
 type VotingType string
 
 const (
-	TypeYesNo   VotingType = "yes_no" // proposals with boolean vote - these can also execute transfers
-	TypeSingle  VotingType = "single_choice" // proposals with only one answer as vote
-	TypeMulti   VotingType = "multi_choice" // proposals with multiple possible answers as vote
-	TypeMeta    VotingType = "meta" // meta proposals to change project settings
+	VotingTypeBoolVote     VotingType = "bool_vote"     // proposals with boolean vote - these can also execute transfers
+	VotingTypeSingleChoice VotingType = "single_choice" // proposals with only one answer as vote
+	VotingTypeMultiChoice  VotingType = "multi_choice"  // proposals with multiple possible answers as vote
+	VotingTypeMetaProposal VotingType = "meta"          // meta proposals to change project settings
 )
 
 // Permission for who may create/execute proposals
@@ -53,10 +51,10 @@ const (
 type ProposalState string
 
 const (
-	StateActive     ProposalState = "active" // default state for new proposals
+	StateActive     ProposalState = "active"     // default state for new proposals
 	StateExecutable ProposalState = "executable" // quorum is reached - final
-	StateExecuted   ProposalState = "executed" // proposal passed
-	StateFailed     ProposalState = "failed" // proposal failed to gather enough votes within the proposal duration
+	StateExecuted   ProposalState = "executed"   // proposal passed
+	StateFailed     ProposalState = "failed"     // proposal failed to gather enough votes within the proposal duration
 )
 
 // Role constants
@@ -64,10 +62,6 @@ const (
 	RoleAdmin  = "admin"
 	RoleMember = "member"
 )
-
-////////////////////////////////////////////////////////////////////////////////
-// Structs
-////////////////////////////////////////////////////////////////////////////////
 
 // Member represents a project member
 type Member struct {
@@ -82,37 +76,36 @@ type Member struct {
 
 // ProjectConfig contains toggles & params for a project
 type ProjectConfig struct {
-	ProposalPermission    Permission    `json:"proposal_permission"`     // who may create proposals
-	ExecutePermission     Permission    `json:"execute_permission"`      // who may execute transfers
-	VotingSystem          VotingSystem  `json:"voting_system"`           // democratic or stake_based
-	ThresholdPercent      int           `json:"threshold_percent"`       // percent required to pass (0-100)
-	QuorumPercent         int           `json:"quorum_percent"`          // percent of voting power that must participate (0-100)
-	ProposalDurationSecs  int64         `json:"proposal_duration_secs"`  // default duration
-	ExecutionDelaySecs    int64         `json:"execution_delay_secs"`    // delay after pass before exec allowed
-	LeaveCooldownSecs     int64         `json:"leave_cooldown_secs"`     // cooldown for leaving/withdrawing
-	DemocraticExactAmt    int64         `json:"democratic_exact_amount"` // exact amount required to join democratic
-	StakeMinAmt           int64         `json:"stake_min_amount"`        // min stake for stake-based joining
-	ProposalCost          int64         `json:"proposal_cost"`           // fee for creating proposals (goes to project funds)
-	EnableSnapshot        bool          `json:"enable_snapshot"`         // snapshot member stakes at proposal start
-	AllowedCategories     []string      `json:"allowed_categories"`      // optional categories
-	RewardEnabled         bool          `json:"reward_enabled"`          // rewards enabled
-	RewardAmount          int64         `json:"reward_amount"`           // reward for proposer (from funds)
-	RewardPayoutOnExecute bool          `json:"reward_payout_on_execute"`// pay reward when proposal executed
+	ProposalPermission    Permission   `json:"proposal_permission"`      // who may create proposals
+	ExecutePermission     Permission   `json:"execute_permission"`       // who may execute transfers
+	VotingSystem          VotingSystem `json:"voting_system"`            // democratic or stake_based
+	ThresholdPercent      int          `json:"threshold_percent"`        // percent required to pass (0-100)
+	QuorumPercent         int          `json:"quorum_percent"`           // percent of voting power that must participate (0-100)
+	ProposalDurationSecs  int64        `json:"proposal_duration_secs"`   // default duration
+	ExecutionDelaySecs    int64        `json:"execution_delay_secs"`     // delay after pass before exec allowed
+	LeaveCooldownSecs     int64        `json:"leave_cooldown_secs"`      // cooldown for leaving/withdrawing
+	DemocraticExactAmt    int64        `json:"democratic_exact_amount"`  // exact amount required to join democratic
+	StakeMinAmt           int64        `json:"stake_min_amount"`         // min stake for stake-based joining
+	ProposalCost          int64        `json:"proposal_cost"`            // fee for creating proposals (goes to project funds)
+	EnableSnapshot        bool         `json:"enable_snapshot"`          // snapshot member stakes at proposal start
+	RewardEnabled         bool         `json:"reward_enabled"`           // rewards enabled
+	RewardAmount          int64        `json:"reward_amount"`            // reward for proposer (from funds)
+	RewardPayoutOnExecute bool         `json:"reward_payout_on_execute"` // pay reward when proposal executed
 }
 
 // Project - stored under project:<id>
 type Project struct {
-	ID           string                 `json:"id"`
-	Creator      string                 `json:"creator"`
-	Name         string                 `json:"name"`
-	Description  string                 `json:"description"`
-	JsonMetadata string                 `json:"json_metadata"`
-	Config       ProjectConfig          `json:"config"`
-	Members      map[string]Member      `json:"members"` // key: address string
-	Funds        int64                  `json:"funds"`   // pool in minimal unit
-	FundsAsset   Asset                  `json:"funds_asset"`
-	CreatedAt    int64                  `json:"created_at"`
-	Paused       bool                   `json:"paused"`
+	ID           string            `json:"id"`
+	Owner        string            `json:"owner"`
+	Name         string            `json:"name"`
+	Description  string            `json:"description"`
+	JsonMetadata string            `json:"json_metadata"`
+	Config       ProjectConfig     `json:"config"`
+	Members      map[string]Member `json:"members"` // key: address string
+	Funds        int64             `json:"funds"`   // pool in minimal unit
+	FundsAsset   sdk.Asset         `json:"funds_asset"`
+	CreatedAt    int64             `json:"created_at"`
+	Paused       bool              `json:"paused"`
 }
 
 // Proposal - stored separately at proposal:<id>
@@ -123,7 +116,6 @@ type Proposal struct {
 	Name            string        `json:"name"`
 	Description     string        `json:"description"`
 	JsonMetadata    string        `json:"json_metadata"`
-	Category        string        `json:"category"`
 	Type            VotingType    `json:"type"`
 	Options         []string      `json:"options"` // for polls
 	Receiver        string        `json:"receiver,omitempty"`
@@ -140,17 +132,21 @@ type Proposal struct {
 }
 
 type VoteRecord struct {
-	ProjectID   string  `json:"project_id"`
-	ProposalID  string  `json:"proposal_id"`
-	Voter       string  `json:"voter"`
-	ChoiceIndex []int   `json:"choice_index"` // indexes for options; for yes/no -> [0] or [1]
-	Weight      int64   `json:"weight"`
-	VotedAt     int64   `json:"voted_at"`
+	ProjectID   string `json:"project_id"`
+	ProposalID  string `json:"proposal_id"`
+	Voter       string `json:"voter"`
+	ChoiceIndex []int  `json:"choice_index"` // indexes for options; for yes/no -> [0] or [1]
+	Weight      int64  `json:"weight"`
+	VotedAt     int64  `json:"voted_at"`
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 // Helpers: keys, guids, time
 ////////////////////////////////////////////////////////////////////////////////
+
+func getSenderAddress() string {
+	return sdk.GetEnv().Sender.Address.String()
+}
 
 func projectKey(id string) string {
 	return "project:" + id
@@ -203,11 +199,11 @@ func getTxID() string {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// Persistence helpers
+// Contract State Persistence helpers
 ////////////////////////////////////////////////////////////////////////////////
 
-func saveProject(prj *Project) {
-	key := projectKey(prj.ID)
+func saveProject(pro *Project) {
+	key := projectKey(pro.ID)
 	b, _ := json.Marshal(pro)
 	sdk.StateSetObject(key, string(b))
 }
@@ -218,17 +214,12 @@ func loadProject(id string) (*Project, error) {
 	if ptr == nil {
 		return nil, fmt.Errorf("project %s not found", id)
 	}
-	var prj Project
+	var pro Project
 	if err := json.Unmarshal([]byte(*ptr), &pro); err != nil {
 		return nil, fmt.Errorf("failed unmarshal project %s: %v", id, err)
 	}
-	return &prj, nil
+	return &pro, nil
 }
-
-// func deleteProject(id string) {
-// 	sdk.StateDeleteObject(projectKey(id))
-// 	// remove from projects index left as caller responsibility
-// }
 
 func addProjectToIndex(id string) {
 	ptr := sdk.StateGetObject(projectsIndexKey)
@@ -258,7 +249,7 @@ func listAllProjectIDs() []string {
 	}
 	return ids
 }
-asdasd
+
 func saveProposal(prpsl *Proposal) {
 	key := proposalKey(prpsl.ID)
 	b, _ := json.Marshal(prpsl)
@@ -381,18 +372,16 @@ func removeVote(projectID, proposalID, voter string) {
 // Public contract functions
 ////////////////////////////////////////////////////////////////////////////////
 
-// CreateProject - create a new project with configuration. Returns generated project ID.
 //go:wasmexport projects_create
-func CreateProject(name, description, jsonMetadata string, cfg ProjectConfig, amount int64, asset Asset) string {
+func CreateProject(name, description, jsonMetadata string, cfg ProjectConfig, amount int64, asset sdk.Asset) string {
 	if amount <= 0 {
 		sdk.Log("CreateProject: amount must be > 1")
-		return
+		return "XXX" // TODO: correct return
 	}
 	// TODO: add more asset checks here
 
-	env := sdk.GetEnv()
-	creator := env.Sender.Address.String()
-	
+	creator := getSenderAddress()
+
 	sdk.HiveDraw(amount, sdk.Asset(asset))
 
 	id := generateGUID()
@@ -400,7 +389,7 @@ func CreateProject(name, description, jsonMetadata string, cfg ProjectConfig, am
 
 	prj := Project{
 		ID:           id,
-		Creator:      creator,
+		Owner:        creator,
 		Name:         name,
 		Description:  description,
 		JsonMetadata: jsonMetadata,
@@ -414,17 +403,17 @@ func CreateProject(name, description, jsonMetadata string, cfg ProjectConfig, am
 	// Add creator as admin
 	m := Member{
 		Address:      creator,
-		Stake:        0,
+		Stake:        1,
 		Role:         RoleAdmin,
 		JoinedAt:     now,
 		LastActionAt: now,
-		Reputation:   0
+		Reputation:   0,
 	}
 	// if it is stake based - add stake of the project fee as stake
-	if cfg.VotingSystem == SystemStake{
-		m.stake = amount
+	if cfg.VotingSystem == SystemStake {
+		m.Stake = amount
 	}
-	
+
 	prj.Members[creator] = m
 	saveProject(&prj)
 	addProjectToIndex(id)
@@ -433,23 +422,25 @@ func CreateProject(name, description, jsonMetadata string, cfg ProjectConfig, am
 }
 
 // GetProject - returns the project object (no proposals included)
+//
 //go:wasmexport projects_get_one
 func GetProject(projectID string) *Project {
 	prj, err := loadProject(projectID)
 	if err != nil {
 		return nil
 	}
-	return pro
+	return prj
 }
 
 // GetAllProjects - returns all projects (IDs then loads each)
+//
 //go:wasmexport projects_get_all
 func GetAllProjects() []*Project {
 	ids := listAllProjectIDs()
 	out := make([]*Project, 0, len(ids))
 	for _, id := range ids {
 		if prj, err := loadProject(id); err == nil {
-			out = append(out, pro)
+			out = append(out, prj)
 		}
 	}
 	return out
@@ -469,34 +460,35 @@ func AddFunds(projectID string, amount int64, asset string) {
 		sdk.Log("AddFunds: project not found")
 		return
 	}
-	
+	caller := getSenderAddress()
+
 	sdk.HiveDraw(amount, sdk.Asset(asset))
 	prj.Funds += amount
 
 	// if stake based
-	if prj.config.VotingSystem == SystemStake {
-	// check if member
-	m, ismember := prj.Members[caller]
-	if ismember {
-		now := nowUnix()
-		m.stake = m.stake + amount
-		m.LastActionAt = now
-		// add member with exact stake
-		prj.Members[caller] = m
+	if prj.Config.VotingSystem == SystemStake {
+		// check if member
+		m, ismember := prj.Members[caller]
+		if ismember {
+			now := nowUnix()
+			m.Stake = m.Stake + amount
+			m.LastActionAt = now
+			// add member with exact stake
+			prj.Members[caller] = m
 		}
 	}
-	
+
 	saveProject(prj)
 	sdk.Log("AddFunds: added " + strconv.FormatInt(amount, 10))
 }
 
-// JoinProject - join with funds according to voting system rules
 //go:wasmexport projects_join
-func JoinProject(projectID string, amount int64, asset string) {
-	env := sdk.GetEnv()
-	caller := env.Sender.Address.String()
+func JoinProject(projectID string, amount int64, assetString string) {
+	caller := getSenderAddress()
 
 	prj, err := loadProject(projectID)
+	asset := sdk.Asset(assetString)
+
 	if err != nil {
 		sdk.Log("JoinProject: project not found")
 		return
@@ -509,32 +501,37 @@ func JoinProject(projectID string, amount int64, asset string) {
 		sdk.Log("JoinProject: amount must be > 0")
 		return
 	}
+	if asset != prj.FundsAsset {
+		sdk.Log(fmt.Sprintf("JoinProject: asset must match the project main asset: %s", prj.FundsAsset.String()))
+		return
+	}
 
 	now := nowUnix()
 	if prj.Config.VotingSystem == SystemDemocratic {
 		if amount != prj.Config.DemocraticExactAmt {
-			sdk.Log("JoinProject: democratic requires exact amount")
+			sdk.Log(fmt.Sprintf("JoinProject: democratic projects need an exact amount to join: %d %s", prj.Config.DemocraticExactAmt, prj.FundsAsset.String()))
 			return
 		}
 		// transfer funds into contract
 		sdk.HiveDraw(amount, sdk.Asset(asset)) // TODO: what if not enough funds?!
 
-		// add member with zero stake
+		// add member with stake 1
 		prj.Members[caller] = Member{
 			Address:      caller,
-			Stake:        0,
+			Stake:        1,
 			Role:         RoleMember,
 			JoinedAt:     now,
 			LastActionAt: now,
-			Reputation:   0
+			Reputation:   0,
 		}
 		prj.Funds += amount
 	} else { // if the project is a stake based system
 		if amount < prj.Config.StakeMinAmt {
-			sdk.Log("JoinProject: amount < stake minimum")
+			sdk.Log(fmt.Sprintf("JoinProject: the sent amount < than the minimum projects entry fee: %d %s", prj.Config.StakeMinAmt, prj.FundsAsset.String()))
+
 			return
 		}
-		m, ok := prj.Members[caller]
+		_, ok := prj.Members[caller]
 		if ok {
 			sdk.Log("JoinProject: already member")
 			return
@@ -552,15 +549,13 @@ func JoinProject(projectID string, amount int64, asset string) {
 		}
 		prj.Funds += amount
 	}
-	saveProject(pro)
+	saveProject(prj)
 	sdk.Log("JoinProject: " + projectID + " by " + caller)
 }
 
-// LeaveProject - request exit or withdraw (if lockup passed)
 //go:wasmexport projects_leave
 func LeaveProject(projectID string, withdrawAmount int64, asset string) {
-	env := sdk.GetEnv()
-	caller := env.Sender.Address.String()
+	caller := getSenderAddress()
 
 	prj, err := loadProject(projectID)
 	if err != nil {
@@ -575,10 +570,6 @@ func LeaveProject(projectID string, withdrawAmount int64, asset string) {
 	if !ok {
 		sdk.Log("LeaveProject: not a member")
 		return
-	}
-	if !prj.Config.EnableSnapshot && !prj.Config.EnableSecretVoting {
-		// nothing special; proceed (we keep this check to show we considered features)
-		_ = 0
 	}
 
 	now := nowUnix()
@@ -603,7 +594,7 @@ func LeaveProject(projectID string, withdrawAmount int64, asset string) {
 			for _, pid := range listProposalIDsForProject(projectID) {
 				removeVote(projectID, pid, caller)
 			}
-			saveProject(pro)
+			saveProject(prj)
 			sdk.Log("LeaveProject: democratic refunded")
 			return
 		}
@@ -623,7 +614,7 @@ func LeaveProject(projectID string, withdrawAmount int64, asset string) {
 		for _, pid := range listProposalIDsForProject(projectID) {
 			removeVote(projectID, pid, caller)
 		}
-		saveProject(pro)
+		saveProject(prj)
 		sdk.Log("LeaveProject: withdrew stake")
 		return
 	}
@@ -631,18 +622,15 @@ func LeaveProject(projectID string, withdrawAmount int64, asset string) {
 	// otherwise set exit requested timestamp
 	member.ExitRequested = now
 	prj.Members[caller] = member
-	saveProject(pro)
+	saveProject(prj)
 	sdk.Log("LeaveProject: exit requested")
 }
 
-// CreateProposal - stores proposal separately and updates project index.
-// caller must be allowed by project config to create proposals; caller pays proposal cost via HiveDraw.
 //go:wasmexport proposals_create
-func CreateProposal(projectID, name, description, jsonMetadata, category string,
+func CreateProposal(projectID string, name string, description string, jsonMetadata string,
 	vtype VotingType, options []string, receiver string, amount int64) (string, error) {
 
-	env := sdk.GetEnv()
-	caller := env.Sender.Address.String()
+	caller := getSenderAddress()
 
 	prj, err := loadProject(projectID)
 	if err != nil {
@@ -662,22 +650,8 @@ func CreateProposal(projectID, name, description, jsonMetadata, category string,
 		}
 	}
 
-	// category allowed check (if provided)
-	if len(prj.Config.AllowedCategories) > 0 && category != "" {
-		allowed := false
-		for _, c := range prj.Config.AllowedCategories {
-			if c == category {
-				allowed = true
-				break
-			}
-		}
-		if !allowed {
-			return "", fmt.Errorf("category not allowed")
-		}
-	}
-
 	// options validation
-	if (vtype == TypeSingle || vtype == TypeMulti) && len(options) == 0 {
+	if (vtype == VotingTypeSingleChoice || vtype == VotingTypeMultiChoice) && len(options) == 0 {
 		return "", fmt.Errorf("poll proposals require options")
 	}
 
@@ -685,7 +659,7 @@ func CreateProposal(projectID, name, description, jsonMetadata, category string,
 	if prj.Config.ProposalCost > 0 {
 		sdk.HiveDraw(prj.Config.ProposalCost, sdk.Asset("VSC")) // TODO: what happens when not enough funds?!
 		prj.Funds += prj.Config.ProposalCost
-		saveProject(pro)
+		saveProject(prj)
 	}
 
 	// create proposal
@@ -702,7 +676,6 @@ func CreateProposal(projectID, name, description, jsonMetadata, category string,
 		Name:            name,
 		Description:     description,
 		JsonMetadata:    jsonMetadata,
-		Category:        category,
 		Type:            vtype,
 		Options:         options,
 		Receiver:        receiver,
@@ -734,12 +707,9 @@ func CreateProposal(projectID, name, description, jsonMetadata, category string,
 	return id, nil
 }
 
-// VoteProposal - cast a vote or store commit hash if secret voting is enabled.
-// For yes/no: choices are [0]=no or [1]=yes
 //go:wasmexport proposals_vote
 func VoteProposal(projectID, proposalID string, choices []int, commitHash string) error {
-	env := sdk.GetEnv()
-	caller := env.Sender.Address.String()
+	caller := getSenderAddress()
 	now := nowUnix()
 
 	prj, err := loadProject(projectID)
@@ -778,18 +748,18 @@ func VoteProposal(projectID, proposalID string, choices []int, commitHash string
 
 	// validate choices by type
 	switch prpsl.Type {
-	case TypeYesNo:
+	case VotingTypeBoolVote:
 		if len(choices) != 1 || (choices[0] != 0 && choices[0] != 1) {
 			return fmt.Errorf("yes_no requires single choice 0 or 1")
 		}
-	case TypeSingle:
+	case VotingTypeSingleChoice:
 		if len(choices) != 1 {
 			return fmt.Errorf("single_choice requires exactly 1 index")
 		}
 		if choices[0] < 0 || choices[0] >= len(prpsl.Options) {
 			return fmt.Errorf("option index out of range")
 		}
-	case TypeMulti:
+	case VotingTypeMultiChoice:
 		if len(choices) == 0 {
 			return fmt.Errorf("multi_choice requires >=1 choices")
 		}
@@ -798,7 +768,7 @@ func VoteProposal(projectID, proposalID string, choices []int, commitHash string
 				return fmt.Errorf("option index out of range")
 			}
 		}
-	case TypeMeta:
+	case VotingTypeMetaProposal:
 		// same validations as polls depending on meta semantics
 	default:
 		return fmt.Errorf("unknown proposal type")
@@ -810,9 +780,8 @@ func VoteProposal(projectID, proposalID string, choices []int, commitHash string
 		Voter:       caller,
 		ChoiceIndex: choices,
 		Weight:      weight,
-		CommitHash:  "",
 
-		VotedAt:     now,
+		VotedAt: now,
 	}
 
 	saveVote(&vote)
@@ -820,24 +789,23 @@ func VoteProposal(projectID, proposalID string, choices []int, commitHash string
 	return nil
 }
 
-// TallyProposal - compute pass/fail/quorum and update proposal state (persisted)
 //go:wasmexport proposals_tally
 func TallyProposal(projectID, proposalID string) (bool, error) {
 	prj, err := loadProject(projectID)
-    if err != nil {
-        return false, err
-    }
-    prpsl, err := loadProposal(proposalID)
-    if err != nil {
-        return false, err
-    }
+	if err != nil {
+		return false, err
+	}
+	prpsl, err := loadProposal(proposalID)
+	if err != nil {
+		return false, err
+	}
 
-    // Only tally if proposal duration has passed
-    if nowUnix() < prpsl.CreatedAt + prj.Config.ProposalDuration {
-        // Proposal duration not yet over, do not change state
-        sdk.Log("TallyProposal: proposal duration not over yet")
-        return false, nil
-    }
+	// Only tally if proposal duration has passed
+	if nowUnix() < prpsl.CreatedAt+prj.Config.ProposalDurationSecs {
+		// Proposal duration not yet over, do not change state
+		sdk.Log("TallyProposal: proposal duration not over yet")
+		return false, nil
+	}
 
 	// compute total possible voting power
 	var totalPossible int64 = 0
@@ -867,7 +835,7 @@ func TallyProposal(projectID, proposalID string) (bool, error) {
 	// check quorum
 	required := int64(0)
 	if prj.Config.QuorumPercent > 0 {
-		required = (int64(prj.Config.QuorumPercent) * totalPossible + 99) / 100 // ceil
+		required = (int64(prj.Config.QuorumPercent)*totalPossible + 99) / 100 // ceil
 	}
 	if required > 0 && participation < required {
 		prpsl.Passed = false
@@ -880,7 +848,7 @@ func TallyProposal(projectID, proposalID string) (bool, error) {
 
 	// evaluate result by type
 	switch prpsl.Type {
-	case TypeYesNo:
+	case VotingTypeBoolVote:
 		yes := optionCounts[1]
 		if yes*100 >= int64(prj.Config.ThresholdPercent)*totalPossible {
 			prpsl.Passed = true
@@ -890,7 +858,7 @@ func TallyProposal(projectID, proposalID string) (bool, error) {
 			prpsl.Passed = false
 			prpsl.State = StateFailed
 		}
-	case TypeSingle, TypeMulti, TypeMeta:
+	case VotingTypeSingleChoice, VotingTypeMultiChoice, VotingTypeMetaProposal:
 		// find best option weight
 		bestIdx := -1
 		var bestVal int64 = 0
@@ -919,13 +887,9 @@ func TallyProposal(projectID, proposalID string) (bool, error) {
 	return prpsl.Passed, nil
 }
 
-// ExecuteProposal - executes transfers or meta actions for an executable proposal.
-// Only yes/no proposals may transfer funds by requirement; only meta proposals may change project config.
-
 //go:wasmexport proposals_execute
 func ExecuteProposal(projectID, proposalID, asset string) error {
-	env := sdk.GetEnv()
-	caller := env.Sender.Address.String()
+	caller := getSenderAddress()
 
 	prj, err := loadProject(projectID)
 	if err != nil {
@@ -955,7 +919,7 @@ func ExecuteProposal(projectID, proposalID, asset string) error {
 		}
 	}
 	// For transfers: only yes/no allowed
-	if prpsl.Type == TypeYesNo && prpsl.Amount > 0 && strings.TrimSpace(prpsl.Receiver) != "" {
+	if prpsl.Type == VotingTypeBoolVote && prpsl.Amount > 0 && strings.TrimSpace(prpsl.Receiver) != "" {
 		// ensure funds
 		if prj.Funds < prpsl.Amount {
 			return fmt.Errorf("insufficient project funds")
@@ -967,26 +931,26 @@ func ExecuteProposal(projectID, proposalID, asset string) error {
 		prpsl.State = StateExecuted
 		prpsl.FinalizedAt = nowUnix()
 		saveProposal(prpsl)
-		saveProject(pro)
+		saveProject(prj)
 		// reward proposer if enabled
 		if prj.Config.RewardEnabled && prj.Config.RewardPayoutOnExecute && prj.Config.RewardAmount > 0 && prj.Funds >= prj.Config.RewardAmount {
 			prj.Funds -= prj.Config.RewardAmount
 			// transfer reward to proposer
 			sdk.HiveTransfer(sdk.Address(prpsl.Creator), prj.Config.RewardAmount, sdk.Asset(asset))
-			saveProject(pro)
+			saveProject(prj)
 		}
 		sdk.Log("ExecuteProposal: transfer executed " + proposalID)
 		return nil
 	}
-	// Meta proposals: interpret json_metadata to perform allowed changes (careful with validation)
-	if prpsl.Type == TypeMeta {
+	// Meta proposals: interpret json_metadata to perform allowed changes
+	if prpsl.Type == VotingTypeMetaProposal {
 		var meta map[string]interface{}
 		if err := json.Unmarshal([]byte(prpsl.JsonMetadata), &meta); err != nil {
 			return fmt.Errorf("invalid meta json")
 		}
 		action, _ := meta["action"].(string)
 		switch action {
-			// TODO: add more project properties here
+		// TODO: add more project properties here
 		case "update_threshold":
 			if v, ok := meta["value"].(float64); ok {
 				newv := int(v)
@@ -997,7 +961,7 @@ func ExecuteProposal(projectID, proposalID, asset string) error {
 				prpsl.Executed = true
 				prpsl.State = StateExecuted
 				prpsl.FinalizedAt = nowUnix()
-				saveProject(pro)
+				saveProject(prj)
 				saveProposal(prpsl)
 				sdk.Log("ExecuteProposal: updated threshold")
 				return nil
@@ -1008,23 +972,22 @@ func ExecuteProposal(projectID, proposalID, asset string) error {
 				prpsl.Executed = true
 				prpsl.State = StateExecuted
 				prpsl.FinalizedAt = nowUnix()
-				saveProject(pro)
+				saveProject(prj)
 				saveProposal(prpsl)
 				sdk.Log("ExecuteProposal: toggled pause")
 				return nil
 			} else {
 				// flip
-
 				prj.Paused = !prj.Paused
 				prpsl.Executed = true
 				prpsl.State = StateExecuted
 				prpsl.FinalizedAt = nowUnix()
-				saveProject(pro)
+				saveProject(prj)
 				saveProposal(prpsl)
 				sdk.Log("ExecuteProposal: toggled pause (flip)")
 				return nil
 			}
-		// add more meta actions here (update quorum, proposal cost, reward setting, etc.)
+		// TODO: add more meta actions here (update quorum, proposal cost, reward setting, etc.)
 		default:
 			return fmt.Errorf("unknown meta action")
 		}
@@ -1038,7 +1001,6 @@ func ExecuteProposal(projectID, proposalID, asset string) error {
 	return nil
 }
 
-// GetProposal - returns a proposal by id (useful for UIs)
 //go:wasmexport proposals_get_one
 func GetProposal(proposalID string) *Proposal {
 	prpsl, err := loadProposal(proposalID)
@@ -1048,7 +1010,6 @@ func GetProposal(proposalID string) *Proposal {
 	return prpsl
 }
 
-// GetProjectProposals - return proposal objects for a project (can be paginated later)
 //go:wasmexport proposals_get_all
 func GetProjectProposals(projectID string) []Proposal {
 	ids := listProposalIDsForProject(projectID)
@@ -1061,11 +1022,9 @@ func GetProjectProposals(projectID string) []Proposal {
 	return out
 }
 
-// TransferProjectOwnership - only the current owner  can transfer the ownership
 //go:wasmexport projects_transfer_ownership
 func TransferProjectOwnership(projectID, newOwner string) error {
-	env := sdk.GetEnv()
-	caller := env.Sender.Address.String()
+	caller := getSenderAddress()
 
 	prj, err := loadProject(projectID)
 	if err != nil {
@@ -1077,7 +1036,7 @@ func TransferProjectOwnership(projectID, newOwner string) error {
 	prj.Owner = newOwner
 	// ensure new owner exists as member
 	if _, ok := prj.Members[newOwner]; !ok {
-		prj.members[newOwner] = Member{
+		prj.Members[newOwner] = Member{
 			Address:      newOwner,
 			Stake:        0,
 			Role:         RoleMember,
@@ -1085,17 +1044,14 @@ func TransferProjectOwnership(projectID, newOwner string) error {
 			LastActionAt: nowUnix(),
 		}
 	}
-	saveProject(p)
+	saveProject(prj)
 	sdk.Log("TransferProjectOwnership: " + projectID + " -> " + newOwner)
 	return nil
 }
 
-// EmergencyPauseImmediate - owner-only can set pause state without meta proposal
 //go:wasmexport projects_pause
 func EmergencyPauseImmediate(projectID string, pause bool) error {
-	env := sdk.GetEnv()
-	caller := env.Sender.Address.String()
-
+	caller := getSenderAddress()
 	prj, err := loadProject(projectID)
 	if err != nil {
 		return err
@@ -1104,7 +1060,7 @@ func EmergencyPauseImmediate(projectID string, pause bool) error {
 		return fmt.Errorf("only the project owner can pause / unpause without dedicated meta proposal")
 	}
 	prj.Paused = pause
-	saveProject(p)
+	saveProject(prj)
 	sdk.Log("EmergencyPauseImmediate: set paused=" + strconv.FormatBool(pause))
 	return nil
 }
@@ -1159,14 +1115,3 @@ func EmergencyPauseImmediate(projectID string, pause bool) error {
 // 	sdk.Log("RemoveProject: removed " + projectID)
 // 	return nil
 // }
-
-////////////////////////////////////////////////////////////////////////////////
-// Utility helpers
-////////////////////////////////////////////////////////////////////////////////
-
-// simpleHash - small helper using hex(sha256-like) placeholder; replace with real hash if available
-func simpleHash(s string) string {
-	// For real use replace with a crypto hash like sha256
-	// Using a naive hex encode of bytes for placeholder
-	return hex.EncodeToString([]byte(s))
-}
