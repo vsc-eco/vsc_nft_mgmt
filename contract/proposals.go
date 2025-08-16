@@ -2,56 +2,113 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"okinoko_dao/sdk"
 	"strconv"
 	"strings"
 )
 
+// -----------------------------------------------------------------------------
+// Create Proposal (returns full proposal as JSON)
+// Exports only primitive params; slices come in as JSON strings
+// -----------------------------------------------------------------------------
+//
 //go:wasmexport proposals_create
-func CreateProposal(projectID string, name string, description string, jsonMetadata string,
-	vtype VotingType, options []string, receiver string, amount int64) (string, error) {
-
+func CreateProposal(
+	projectID string,
+	name string,
+	description string,
+	jsonMetadata string,
+	vtypeStr string, // VotingType as string (e.g., "bool_vote", "single_choice", ...)
+	optionsJSON string, // JSON array of strings, e.g. '["opt1","opt2"]'
+	receiver string,
+	amount int64,
+) string {
 	caller := getSenderAddress()
 
 	prj, err := loadProject(projectID)
 	if err != nil {
-		return "", err
+		return returnJsonResponse(
+			"proposals_create", false, map[string]interface{}{
+				"details": "project not found",
+			},
+		)
 	}
 	if prj.Paused {
-		return "", fmt.Errorf("project paused")
+		return returnJsonResponse(
+			"proposals_create", false, map[string]interface{}{
+				"details": "project is paused",
+			},
+		)
 	}
 
-	// permission check
+	// Permission check
 	if prj.Config.ProposalPermission == PermCreatorOnly && caller != prj.Owner {
-		return "", fmt.Errorf("only project owner can create proposals")
+		return returnJsonResponse(
+			"proposals_create", false, map[string]interface{}{
+				"details": "only project owner can create proposals",
+			},
+		)
+
 	}
 	if prj.Config.ProposalPermission == PermAnyMember {
 		if _, ok := prj.Members[caller]; !ok {
-			return "", fmt.Errorf("only members can create proposals")
+			return returnJsonResponse(
+				"proposals_create", false, map[string]interface{}{
+					"details": "only members can create proposals",
+				},
+			)
+
 		}
 	}
 
-	// options validation
-	if (vtype == VotingTypeSingleChoice || vtype == VotingTypeMultiChoice) && len(options) == 0 {
-		return "", fmt.Errorf("poll proposals require options")
+	// Parse VotingType
+	vtype := VotingType(vtypeStr)
+	switch vtype {
+	case VotingTypeBoolVote, VotingTypeSingleChoice, VotingTypeMultiChoice, VotingTypeMetaProposal:
+	default:
+		return returnJsonResponse(
+			"proposals_create", false, map[string]interface{}{
+				"details": "invalid voting type",
+			},
+		)
 	}
 
-	// charge proposal cost (draw funds from caller to contract)
+	// Parse options JSON (for polls)
+	var options []string
+	if strings.TrimSpace(optionsJSON) != "" {
+		if err := json.Unmarshal([]byte(optionsJSON), &options); err != nil {
+			return returnJsonResponse(
+				"proposals_create", false, map[string]interface{}{
+					"details": "invalid options json",
+				},
+			)
+
+		}
+	}
+	// Options validation
+	if (vtype == VotingTypeSingleChoice || vtype == VotingTypeMultiChoice) && len(options) == 0 {
+		return returnJsonResponse(
+			"proposals_create", false, map[string]interface{}{
+				"details": "poll proposals require options",
+			},
+		)
+	}
+
+	// Charge proposal cost (from caller to contract)
 	if prj.Config.ProposalCost > 0 {
-		sdk.HiveDraw(prj.Config.ProposalCost, sdk.Asset("VSC")) // TODO: what happens when not enough funds?!
+		sdk.HiveDraw(prj.Config.ProposalCost, sdk.Asset("VSC")) // NOTE: same placeholder as your original code
 		prj.Funds += prj.Config.ProposalCost
 		saveProject(prj)
 	}
 
-	// create proposal
+	// Create proposal
 	id := generateGUID()
 	now := nowUnix()
 	duration := prj.Config.ProposalDurationSecs
 	if duration <= 0 {
 		duration = 60 * 60 * 24 * 7 // default 7 days
 	}
-	prpsl := Proposal{
+	prpsl := &Proposal{
 		ID:              id,
 		ProjectID:       projectID,
 		Creator:         caller,
@@ -70,7 +127,7 @@ func CreateProposal(projectID string, name string, description string, jsonMetad
 		TxID:            getTxID(),
 	}
 
-	// If snapshot enabled, compute snapshot total voting power
+	// Snapshot voting power (if enabled)
 	if prj.Config.EnableSnapshot {
 		var total int64 = 0
 		if prj.Config.VotingSystem == SystemDemocratic {
@@ -83,77 +140,159 @@ func CreateProposal(projectID string, name string, description string, jsonMetad
 		prpsl.SnapshotTotal = total
 	}
 
-	saveProposal(&prpsl)
+	saveProposal(prpsl)
 	addProposalToProjectIndex(projectID, id)
 	sdk.Log("CreateProposal: " + id + " in project " + projectID)
-	return id, nil
+
+	return returnJsonResponse(
+		"proposals_create", true, map[string]interface{}{
+			"id":       id,
+			"proposal": prpsl,
+		},
+	)
+
 }
 
+// -----------------------------------------------------------------------------
+// Vote Proposal (choices as JSON array) -> returns {"success":true} or {"error":...}
+// -----------------------------------------------------------------------------
+//
 //go:wasmexport proposals_vote
-func VoteProposal(projectID, proposalID string, choices []int, commitHash string) error {
+func VoteProposal(projectID, proposalID string, choicesJSON string, commitHash string) string {
 	caller := getSenderAddress()
 	now := nowUnix()
 
 	prj, err := loadProject(projectID)
 	if err != nil {
-		return err
+		return returnJsonResponse(
+			"proposals_vote", false, map[string]interface{}{
+				"details": "project not found",
+			},
+		)
 	}
 	if prj.Paused {
-		return fmt.Errorf("project paused")
+		return returnJsonResponse(
+			"proposals_vote", false, map[string]interface{}{
+				"details": "project is paused",
+			},
+		)
 	}
+
 	prpsl, err := loadProposal(proposalID)
 	if err != nil {
-		return err
+		return returnJsonResponse(
+			"proposals_vote", false, map[string]interface{}{
+				"details": "proposal not found",
+			},
+		)
 	}
 	if prpsl.State != StateActive {
-		return fmt.Errorf("proposal not active")
+		return returnJsonResponse(
+			"proposals_vote", false, map[string]interface{}{
+				"details": "proposal is not active",
+			},
+		)
 	}
-	// time window
+
+	// Time window
 	if prpsl.DurationSeconds > 0 && now > prpsl.CreatedAt+prpsl.DurationSeconds {
 		// finalize instead
-		TallyProposal(projectID, proposalID)
-		return fmt.Errorf("voting period ended (tallied)")
+		_ = TallyProposal(projectID, proposalID) // ignore result here
+		return returnJsonResponse(
+			"proposals_vote", false, map[string]interface{}{
+				"details": "voting period ended (tallied)",
+			},
+		)
 	}
-	// member check
+
+	// Member check
 	member, ok := prj.Members[caller]
 	if !ok {
-		return fmt.Errorf("only members may vote")
+		return returnJsonResponse(
+			"proposals_vote", false, map[string]interface{}{
+				"details": "only members may vote",
+			},
+		)
 	}
-	// compute weight
-	var weight int64 = 1
+
+	// Compute weight
+	weight := int64(1)
 	if prj.Config.VotingSystem == SystemStake {
 		weight = member.Stake
 		if weight <= 0 {
-			return fmt.Errorf("member stake zero")
+			return returnJsonResponse(
+				"proposals_vote", false, map[string]interface{}{
+					"details": "member stake zero",
+				},
+			)
 		}
 	}
 
-	// validate choices by type
+	// Parse choices
+	var choices []int
+	if err := json.Unmarshal([]byte(choicesJSON), &choices); err != nil {
+		return returnJsonResponse(
+			"proposals_vote", false, map[string]interface{}{
+				"details": "invalid choice json",
+			},
+		)
+	}
+
+	// Validate choices by type
 	switch prpsl.Type {
 	case VotingTypeBoolVote:
 		if len(choices) != 1 || (choices[0] != 0 && choices[0] != 1) {
-			return fmt.Errorf("yes_no requires single choice 0 or 1")
+			return returnJsonResponse(
+				"proposals_vote", false, map[string]interface{}{
+					"details": "bool_vote requires single choice 0 or 1",
+				},
+			)
+
 		}
 	case VotingTypeSingleChoice:
 		if len(choices) != 1 {
-			return fmt.Errorf("single_choice requires exactly 1 index")
+			return returnJsonResponse(
+				"proposals_vote", false, map[string]interface{}{
+					"details": "single_choice requires exactly 1 index",
+				},
+			)
+
 		}
 		if choices[0] < 0 || choices[0] >= len(prpsl.Options) {
-			return fmt.Errorf("option index out of range")
+
+			return returnJsonResponse(
+				"proposals_vote", false, map[string]interface{}{
+					"details": "option index out of range",
+				},
+			)
+
 		}
 	case VotingTypeMultiChoice:
 		if len(choices) == 0 {
-			return fmt.Errorf("multi_choice requires >=1 choices")
+			return returnJsonResponse(
+				"proposals_vote", false, map[string]interface{}{
+					"details": "multi_choice requires >=1 choices",
+				},
+			)
 		}
 		for _, idx := range choices {
 			if idx < 0 || idx >= len(prpsl.Options) {
-				return fmt.Errorf("option index out of range")
+				return returnJsonResponse(
+					"proposals_vote", false, map[string]interface{}{
+						"details": "option index out of range",
+					},
+				)
+
 			}
 		}
 	case VotingTypeMetaProposal:
-		// same validations as polls depending on meta semantics
+		// no extra validation here
 	default:
-		return fmt.Errorf("unknown proposal type")
+		return returnJsonResponse(
+			"proposals_vote", false, map[string]interface{}{
+				"details": "unknown proposal type",
+			},
+		)
 	}
 
 	vote := VoteRecord{
@@ -162,31 +301,53 @@ func VoteProposal(projectID, proposalID string, choices []int, commitHash string
 		Voter:       caller,
 		ChoiceIndex: choices,
 		Weight:      weight,
-
-		VotedAt: now,
+		VotedAt:     now,
 	}
 
 	saveVote(&vote)
 	sdk.Log("VoteProposal: voter " + caller + " for " + proposalID)
-	return nil
+	return returnJsonResponse(
+		"proposals_vote", true, map[string]interface{}{
+			"vote": vote,
+		},
+	)
 }
 
+// -----------------------------------------------------------------------------
+// Tally Proposal -> returns {"success":true,"passed":bool,"proposal":{...}}
+// -----------------------------------------------------------------------------
+//
 //go:wasmexport proposals_tally
-func TallyProposal(projectID, proposalID string) (bool, error) {
+func TallyProposal(projectID, proposalID string) string {
 	prj, err := loadProject(projectID)
 	if err != nil {
-		return false, err
+		return returnJsonResponse(
+			"proposals_tally", false, map[string]interface{}{
+				"details": "project not found",
+			},
+		)
 	}
 	prpsl, err := loadProposal(proposalID)
 	if err != nil {
-		return false, err
+		return returnJsonResponse(
+			"proposals_tally", false, map[string]interface{}{
+				"details": "proposal not found",
+			},
+		)
 	}
 
+	// Use proposal-specific duration if set, else project default
+	duration := prpsl.DurationSeconds
+	if duration <= 0 {
+		duration = prj.Config.ProposalDurationSecs
+	}
 	// Only tally if proposal duration has passed
-	if nowUnix() < prpsl.CreatedAt+prj.Config.ProposalDurationSecs {
-		// Proposal duration not yet over, do not change state
-		sdk.Log("TallyProposal: proposal duration not over yet")
-		return false, nil
+	if nowUnix() < prpsl.CreatedAt+duration {
+		return returnJsonResponse(
+			"proposals_tally", false, map[string]interface{}{
+				"details": "proposal duration not over yet",
+			},
+		)
 	}
 
 	// compute total possible voting power
@@ -225,7 +386,11 @@ func TallyProposal(projectID, proposalID string) (bool, error) {
 		prpsl.FinalizedAt = nowUnix()
 		saveProposal(prpsl)
 		sdk.Log("TallyProposal: quorum not reached")
-		return false, nil
+		return returnJsonResponse(
+			"proposals_tally", false, map[string]interface{}{
+				"details": "quorum not reached",
+			},
+		)
 	}
 
 	// evaluate result by type
@@ -266,45 +431,99 @@ func TallyProposal(projectID, proposalID string) (bool, error) {
 	prpsl.FinalizedAt = nowUnix()
 	saveProposal(prpsl)
 	sdk.Log("TallyProposal: tallied - passed=" + strconv.FormatBool(prpsl.Passed))
-	return prpsl.Passed, nil
+	return returnJsonResponse(
+		"proposals_tally", true, map[string]interface{}{
+			"passed":   prpsl.Passed,
+			"proposal": prpsl,
+		},
+	)
+
 }
 
+// -----------------------------------------------------------------------------
+// Execute Proposal -> returns JSON with action details or error
+// (keeps your original flow; only return type changed)
+// -----------------------------------------------------------------------------
+//
 //go:wasmexport proposals_execute
-func ExecuteProposal(projectID, proposalID, asset string) error {
+func ExecuteProposal(projectID, proposalID, asset string) string {
 	caller := getSenderAddress()
 
 	prj, err := loadProject(projectID)
 	if err != nil {
-		return err
+		return returnJsonResponse(
+			"proposals_execute", false, map[string]interface{}{
+				"details": "project not found",
+			},
+		)
 	}
 	if prj.Paused {
-		return fmt.Errorf("project paused")
+		return returnJsonResponse(
+			"proposals_execute", false, map[string]interface{}{
+				"details": "project is paused",
+			},
+		)
 	}
 	prpsl, err := loadProposal(proposalID)
 	if err != nil {
-		return err
+		return returnJsonResponse(
+			"proposals_execute", false, map[string]interface{}{
+				"details": "proposal not found",
+			},
+		)
 	}
 	if prpsl.State != StateExecutable {
-		return fmt.Errorf("proposal not executable (state=%s)", prpsl.State)
+		return returnJsonResponse(
+			"proposals_execute", false, map[string]interface{}{
+				"details":  "proposal not executable",
+				"proposal": prpsl,
+			},
+		)
+
 	}
 	// check execution delay
 	if prj.Config.ExecutionDelaySecs > 0 && nowUnix() < prpsl.PassTimestamp+prj.Config.ExecutionDelaySecs {
-		return fmt.Errorf("execution delay not passed")
+		return returnJsonResponse(
+			"proposals_execute", false, map[string]interface{}{
+				"details": "execution delay not passed",
+				"delay":   prj.Config.ExecutionDelaySecs,
+				//TODO: add current elapsed time
+			},
+		)
 	}
 	// check permission to execute
 	if prj.Config.ExecutePermission == PermCreatorOnly && caller != prpsl.Creator {
-		return fmt.Errorf("only creator can execute")
+		return returnJsonResponse(
+			"proposals_execute", false, map[string]interface{}{
+				"details": "only creator can execute",
+				"creator": prpsl.Creator,
+			},
+		)
+
 	}
 	if prj.Config.ExecutePermission == PermAnyMember {
 		if _, ok := prj.Members[caller]; !ok {
-			return fmt.Errorf("only members can execute")
+			return returnJsonResponse(
+				"proposals_execute", false, map[string]interface{}{
+					"details": "only members can execute",
+				},
+			)
 		}
 	}
+
 	// For transfers: only yes/no allowed
 	if prpsl.Type == VotingTypeBoolVote && prpsl.Amount > 0 && strings.TrimSpace(prpsl.Receiver) != "" {
 		// ensure funds
 		if prj.Funds < prpsl.Amount {
-			return fmt.Errorf("insufficient project funds")
+			return returnJsonResponse(
+				"proposals_execute", false, map[string]interface{}{
+					"details": "insufficient project funds",
+					"funds":   prj.Funds,
+					"needed":  prpsl.Amount,
+					"asset":   prj.FundsAsset,
+				},
+			)
+
 		}
 		// transfer from contract to receiver
 		sdk.HiveTransfer(sdk.Address(prpsl.Receiver), prpsl.Amount, sdk.Asset(asset))
@@ -322,13 +541,26 @@ func ExecuteProposal(projectID, proposalID, asset string) error {
 			saveProject(prj)
 		}
 		sdk.Log("ExecuteProposal: transfer executed " + proposalID)
-		return nil
+		return returnJsonResponse(
+			"proposals_execute", true, map[string]interface{}{
+				"to":     prpsl.Receiver,
+				"amount": prpsl.Amount,
+				"asset":  asset,
+			},
+		)
+
 	}
+
 	// Meta proposals: interpret json_metadata to perform allowed changes
 	if prpsl.Type == VotingTypeMetaProposal {
 		var meta map[string]interface{}
 		if err := json.Unmarshal([]byte(prpsl.JsonMetadata), &meta); err != nil {
-			return fmt.Errorf("invalid meta json")
+			return returnJsonResponse(
+				"proposals_execute", false, map[string]interface{}{
+					"details": "invalid meta json",
+				},
+			)
+
 		}
 		action, _ := meta["action"].(string)
 		switch action {
@@ -337,7 +569,13 @@ func ExecuteProposal(projectID, proposalID, asset string) error {
 			if v, ok := meta["value"].(float64); ok {
 				newv := int(v)
 				if newv < 0 || newv > 100 {
-					return fmt.Errorf("threshold out of range")
+					return returnJsonResponse(
+						"proposals_execute", false, map[string]interface{}{
+							"property": "update_threshold",
+							"details":  "value out of range",
+						},
+					)
+
 				}
 				prj.Config.ThresholdPercent = newv
 				prpsl.Executed = true
@@ -346,283 +584,93 @@ func ExecuteProposal(projectID, proposalID, asset string) error {
 				saveProject(prj)
 				saveProposal(prpsl)
 				sdk.Log("ExecuteProposal: updated threshold")
-				return nil
+				return returnJsonResponse(
+					"proposals_execute", true, map[string]interface{}{
+						"property": "update_threshold",
+						"value":    newv,
+					},
+				)
+
 			}
 		case "toggle_pause":
 			if val, ok := meta["value"].(bool); ok {
 				prj.Paused = val
-				prpsl.Executed = true
-				prpsl.State = StateExecuted
-				prpsl.FinalizedAt = nowUnix()
-				saveProject(prj)
-				saveProposal(prpsl)
-				sdk.Log("ExecuteProposal: toggled pause")
-				return nil
 			} else {
 				// flip
 				prj.Paused = !prj.Paused
-				prpsl.Executed = true
-				prpsl.State = StateExecuted
-				prpsl.FinalizedAt = nowUnix()
-				saveProject(prj)
-				saveProposal(prpsl)
-				sdk.Log("ExecuteProposal: toggled pause (flip)")
-				return nil
 			}
+			prpsl.Executed = true
+			prpsl.State = StateExecuted
+			prpsl.FinalizedAt = nowUnix()
+			saveProject(prj)
+			saveProposal(prpsl)
+			sdk.Log("ExecuteProposal: toggled pause")
+			return returnJsonResponse(
+				"proposals_execute", true, map[string]interface{}{
+					"property": "toggle_pause",
+					"value":    prj.Paused,
+				},
+			)
 		// TODO: add more meta actions here (update quorum, proposal cost, reward setting, etc.)
 		default:
-			return fmt.Errorf("unknown meta action")
+			return returnJsonResponse(
+				"proposals_execute", false, map[string]interface{}{
+					"details": "meta property unknown",
+				},
+			)
 		}
 	}
+
 	// If nothing to execute, mark executed
 	prpsl.Executed = true
 	prpsl.State = StateExecuted
 	prpsl.FinalizedAt = nowUnix()
 	saveProposal(prpsl)
 	sdk.Log("ExecuteProposal: marked executed without transfer " + proposalID)
-	return nil
+	return returnJsonResponse(
+		"proposals_execute", true, map[string]interface{}{
+			"details": "executed without meta change or transfer",
+		},
+	)
 }
 
+// -----------------------------------------------------------------------------
+// Get single proposal -> returns {"success":true,"proposal":{...}}
+// -----------------------------------------------------------------------------
+//
 //go:wasmexport proposals_get_one
-func GetProposal(proposalID string) *Proposal {
+func GetProposal(proposalID string) string {
 	prpsl, err := loadProposal(proposalID)
 	if err != nil {
-		return nil
+		return returnJsonResponse(
+			"proposals_get_one", false, map[string]interface{}{
+				"details": "proposal not found",
+			},
+		)
 	}
-	return prpsl
+	return returnJsonResponse(
+		"proposals_get_one", true, map[string]interface{}{
+			"propsal": prpsl,
+		},
+	)
 }
 
-// AddFunds - draw funds from caller and add to project's treasury pool
-// If the project is a stake based system & the sender is a valid mamber then the stake of the member will get updated accordingly.
-
-//go:wasmexport projects_add_funds
-func AddFunds(projectID string, amount int64, asset string) {
-	if amount <= 0 {
-		sdk.Log("AddFunds: amount must be > 0")
-		return
-	}
-	prj, err := loadProject(projectID)
-	if err != nil {
-		sdk.Log("AddFunds: project not found")
-		return
-	}
-	caller := getSenderAddress()
-
-	sdk.HiveDraw(amount, sdk.Asset(asset))
-	prj.Funds += amount
-
-	// if stake based
-	if prj.Config.VotingSystem == SystemStake {
-		// check if member
-		m, ismember := prj.Members[caller]
-		if ismember {
-			now := nowUnix()
-			m.Stake = m.Stake + amount
-			m.LastActionAt = now
-			// add member with exact stake
-			prj.Members[caller] = m
-		}
-	}
-
-	saveProject(prj)
-	sdk.Log("AddFunds: added " + strconv.FormatInt(amount, 10))
-}
-
-//go:wasmexport projects_join
-func JoinProject(projectID string, amount int64, assetString string) {
-	caller := getSenderAddress()
-
-	prj, err := loadProject(projectID)
-	asset := sdk.Asset(assetString)
-
-	if err != nil {
-		sdk.Log("JoinProject: project not found")
-		return
-	}
-	if prj.Paused {
-		sdk.Log("JoinProject: project paused")
-		return
-	}
-	if amount <= 0 {
-		sdk.Log("JoinProject: amount must be > 0")
-		return
-	}
-	if asset != prj.FundsAsset {
-		sdk.Log(fmt.Sprintf("JoinProject: asset must match the project main asset: %s", prj.FundsAsset.String()))
-		return
-	}
-
-	now := nowUnix()
-	if prj.Config.VotingSystem == SystemDemocratic {
-		if amount != prj.Config.DemocraticExactAmt {
-			sdk.Log(fmt.Sprintf("JoinProject: democratic projects need an exact amount to join: %d %s", prj.Config.DemocraticExactAmt, prj.FundsAsset.String()))
-			return
-		}
-		// transfer funds into contract
-		sdk.HiveDraw(amount, sdk.Asset(asset)) // TODO: what if not enough funds?!
-
-		// add member with stake 1
-		prj.Members[caller] = Member{
-			Address:      caller,
-			Stake:        1,
-			Role:         RoleMember,
-			JoinedAt:     now,
-			LastActionAt: now,
-			Reputation:   0,
-		}
-		prj.Funds += amount
-	} else { // if the project is a stake based system
-		if amount < prj.Config.StakeMinAmt {
-			sdk.Log(fmt.Sprintf("JoinProject: the sent amount < than the minimum projects entry fee: %d %s", prj.Config.StakeMinAmt, prj.FundsAsset.String()))
-
-			return
-		}
-		_, ok := prj.Members[caller]
-		if ok {
-			sdk.Log("JoinProject: already member")
-			return
-		} else {
-			// transfer funds into contract
-			sdk.HiveDraw(amount, sdk.Asset(asset)) // TODO: what if not enough funds?!
-			// add member with exact stake
-			prj.Members[caller] = Member{
-				Address:      caller,
-				Stake:        amount,
-				Role:         RoleMember,
-				JoinedAt:     now,
-				LastActionAt: now,
-			}
-		}
-		prj.Funds += amount
-	}
-	saveProject(prj)
-	sdk.Log("JoinProject: " + projectID + " by " + caller)
-}
-
-//go:wasmexport projects_leave
-func LeaveProject(projectID string, withdrawAmount int64, asset string) {
-	caller := getSenderAddress()
-
-	prj, err := loadProject(projectID)
-	if err != nil {
-		sdk.Log("LeaveProject: project not found")
-		return
-	}
-	if prj.Paused {
-		sdk.Log("LeaveProject: project paused")
-		return
-	}
-	member, ok := prj.Members[caller]
-	if !ok {
-		sdk.Log("LeaveProject: not a member")
-		return
-	}
-
-	now := nowUnix()
-	// if exit requested previously -> try to withdraw
-	if member.ExitRequested > 0 {
-		if now-member.ExitRequested < prj.Config.LeaveCooldownSecs {
-			sdk.Log("LeaveProject: cooldown not passed")
-			return
-		}
-		// withdraw stake (for stake-based) or refund democratic amount
-		if prj.Config.VotingSystem == SystemDemocratic {
-			refund := prj.Config.DemocraticExactAmt
-			if prj.Funds < refund {
-				sdk.Log("LeaveProject: insufficient project funds")
-				return
-			}
-			prj.Funds -= refund
-			// transfer back to caller
-			sdk.HiveTransfer(sdk.Address(caller), refund, sdk.Asset(asset))
-			delete(prj.Members, caller)
-			// remove votes
-			for _, pid := range listProposalIDsForProject(projectID) {
-				removeVote(projectID, pid, caller)
-			}
-			saveProject(prj)
-			sdk.Log("LeaveProject: democratic refunded")
-			return
-		}
-		// stake-based
-		withdraw := member.Stake
-		if withdraw <= 0 {
-			sdk.Log("LeaveProject: nothing to withdraw")
-			return
-		}
-		if prj.Funds < withdraw {
-			sdk.Log("LeaveProject: insufficient project funds")
-			return
-		}
-		prj.Funds -= withdraw
-		sdk.HiveTransfer(sdk.Address(caller), withdraw, sdk.Asset(asset))
-		delete(prj.Members, caller)
-		for _, pid := range listProposalIDsForProject(projectID) {
-			removeVote(projectID, pid, caller)
-		}
-		saveProject(prj)
-		sdk.Log("LeaveProject: withdrew stake")
-		return
-	}
-
-	// otherwise set exit requested timestamp
-	member.ExitRequested = now
-	prj.Members[caller] = member
-	saveProject(prj)
-	sdk.Log("LeaveProject: exit requested")
-}
-
+// -----------------------------------------------------------------------------
+// Get all proposals for a project -> returns {"success":true,"proposals":[...]}
+// -----------------------------------------------------------------------------
+//
 //go:wasmexport proposals_get_all
-func GetProjectProposals(projectID string) []Proposal {
+func GetProjectProposals(projectID string) string {
 	ids := listProposalIDsForProject(projectID)
-	out := make([]Proposal, 0, len(ids))
+	proposals := make([]Proposal, 0, len(ids))
 	for _, id := range ids {
 		if prpsl, err := loadProposal(id); err == nil {
-			out = append(out, *prpsl)
+			proposals = append(proposals, *prpsl)
 		}
 	}
-	return out
-}
-
-//go:wasmexport projects_transfer_ownership
-func TransferProjectOwnership(projectID, newOwner string) error {
-	caller := getSenderAddress()
-
-	prj, err := loadProject(projectID)
-	if err != nil {
-		return err
-	}
-	if caller != prj.Owner {
-		return fmt.Errorf("only creator")
-	}
-	prj.Owner = newOwner
-	// ensure new owner exists as member
-	if _, ok := prj.Members[newOwner]; !ok {
-		prj.Members[newOwner] = Member{
-			Address:      newOwner,
-			Stake:        0,
-			Role:         RoleMember,
-			JoinedAt:     nowUnix(),
-			LastActionAt: nowUnix(),
-		}
-	}
-	saveProject(prj)
-	sdk.Log("TransferProjectOwnership: " + projectID + " -> " + newOwner)
-	return nil
-}
-
-//go:wasmexport projects_pause
-func EmergencyPauseImmediate(projectID string, pause bool) error {
-	caller := getSenderAddress()
-	prj, err := loadProject(projectID)
-	if err != nil {
-		return err
-	}
-	if caller != prj.Owner {
-		return fmt.Errorf("only the project owner can pause / unpause without dedicated meta proposal")
-	}
-	prj.Paused = pause
-	saveProject(prj)
-	sdk.Log("EmergencyPauseImmediate: set paused=" + strconv.FormatBool(pause))
-	return nil
+	return returnJsonResponse(
+		"proposals_get_one", true, map[string]interface{}{
+			"propsal": proposals,
+		},
+	)
 }

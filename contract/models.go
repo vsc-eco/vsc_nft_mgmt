@@ -1,6 +1,8 @@
 package main
 
-import "okinoko_dao/sdk"
+import (
+	"okinoko_dao/sdk"
+)
 
 ////////////////////////////////////////////////////////////////////////////////
 // Types & Structs
@@ -60,6 +62,17 @@ type Member struct {
 	Reputation    int64  `json:"reputation"`     // initially 0 | every vote += 1 | every passed proposal += 5
 }
 
+func (m *Member) ToJSON() (string, error) {
+	return ToJSON(m)
+}
+func MemberFromJSON(data string) (*Member, error) {
+	var m Member
+	if err := FromJSON(data, &m); err != nil {
+		return nil, err
+	}
+	return &m, nil
+}
+
 // ProjectConfig contains toggles & params for a project
 type ProjectConfig struct {
 	ProposalPermission    Permission   `json:"proposal_permission"`      // who may create proposals
@@ -79,6 +92,17 @@ type ProjectConfig struct {
 	RewardPayoutOnExecute bool         `json:"reward_payout_on_execute"` // pay reward when proposal executed
 }
 
+func (pc *ProjectConfig) ToJSON() (string, error) {
+	return ToJSON(pc)
+}
+func ProjectConfigFromJSON(data string) (*ProjectConfig, error) {
+	var pc ProjectConfig
+	if err := FromJSON(data, &pc); err != nil {
+		return nil, err
+	}
+	return &pc, nil
+}
+
 // Project - stored under project:<id>
 type Project struct {
 	ID           string            `json:"id"`
@@ -92,6 +116,17 @@ type Project struct {
 	FundsAsset   sdk.Asset         `json:"funds_asset"`
 	CreatedAt    int64             `json:"created_at"`
 	Paused       bool              `json:"paused"`
+}
+
+func (p *Project) ToJSON() (string, error) {
+	return ToJSON(p)
+}
+func ProjectFromJSON(data string) (*Project, error) {
+	var p Project
+	if err := FromJSON(data, &p); err != nil {
+		return nil, err
+	}
+	return &p, nil
 }
 
 // Proposal - stored separately at proposal:<id>
@@ -117,6 +152,17 @@ type Proposal struct {
 	TxID            string        `json:"tx_id,omitempty"`
 }
 
+func (pr *Proposal) ToJSON() (string, error) {
+	return ToJSON(pr)
+}
+func ProposalFromJSON(data string) (*Proposal, error) {
+	var pr Proposal
+	if err := FromJSON(data, &pr); err != nil {
+		return nil, err
+	}
+	return &pr, nil
+}
+
 type VoteRecord struct {
 	ProjectID   string `json:"project_id"`
 	ProposalID  string `json:"proposal_id"`
@@ -124,4 +170,15 @@ type VoteRecord struct {
 	ChoiceIndex []int  `json:"choice_index"` // indexes for options; for yes/no -> [0] or [1]
 	Weight      int64  `json:"weight"`
 	VotedAt     int64  `json:"voted_at"`
+}
+
+func (vr *VoteRecord) ToJSON() (string, error) {
+	return ToJSON(vr)
+}
+func VoteRecordFromJSON(data string) (*VoteRecord, error) {
+	var vr VoteRecord
+	if err := FromJSON(data, &vr); err != nil {
+		return nil, err
+	}
+	return &vr, nil
 }

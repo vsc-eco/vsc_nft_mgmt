@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"okinoko_dao/sdk"
 	"strconv"
@@ -65,4 +66,33 @@ func getTxID() string {
 		return *t
 	}
 	return ""
+}
+
+///////////////////////////////////////////////////
+// Conversions from/to json strings
+///////////////////////////////////////////////////
+
+// ToJSON converts any struct to a JSON string
+func ToJSON(v interface{}) (string, error) {
+	data, err := json.Marshal(v)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+// FromJSON parses a JSON string into the given struct pointer
+func FromJSON(data string, v interface{}) error {
+	return json.Unmarshal([]byte(data), v)
+}
+
+// -----------------------------------------------------------------------------
+// Small JSON helpers
+// -----------------------------------------------------------------------------
+
+func returnJsonResponse(action string, success bool, data map[string]interface{}) string {
+	data["action"] = action
+	data["success"] = success
+	b, _ := json.Marshal(data)
+	return string(b)
 }
