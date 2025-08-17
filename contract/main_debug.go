@@ -3,4 +3,13 @@
 // created by tibfox 2025-08-12
 ////////////////////////////////////////////////////////////////////////////////
 
+//go:build debug
+// +build debug
+
 package main
+
+state :=NewMockState()
+
+func getState() State {
+	return state
+}

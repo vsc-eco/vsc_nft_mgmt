@@ -8,6 +8,7 @@ import (
 
 //go:wasmexport projects_create
 func CreateProject(name, description, jsonMetadata string, cfgJSON string, amount int64, assetJSON string) string {
+	state := getState()
 	if amount <= 0 {
 		sdk.Log("CreateProject: amount must be > 1")
 		return returnJsonResponse(
@@ -74,8 +75,8 @@ func CreateProject(name, description, jsonMetadata string, cfgJSON string, amoun
 	}
 	prj.Members[creator] = m
 
-	saveProject(&prj)
-	addProjectToIndex(id)
+	saveProject(state, &prj)
+	addProjectToIndex(state, id)
 
 	sdk.Log("CreateProject: " + id)
 
@@ -92,7 +93,8 @@ func CreateProject(name, description, jsonMetadata string, cfgJSON string, amoun
 //
 //go:wasmexport projects_get_one
 func GetProject(projectID string) string {
-	prj, err := loadProject(projectID)
+	state := getState()
+	prj, err := loadProject(state, projectID)
 	if err != nil {
 		return returnJsonResponse(
 			"projects_get_one", false, map[string]interface{}{
@@ -111,10 +113,11 @@ func GetProject(projectID string) string {
 //
 //go:wasmexport projects_get_all
 func GetAllProjects() string {
-	ids := listAllProjectIDs()
+	state := getState()
+	ids := listAllProjectIDs(state)
 	projects := make([]*Project, 0, len(ids))
 	for _, id := range ids {
-		if prj, err := loadProject(id); err == nil {
+		if prj, err := loadProject(state, id); err == nil {
 			projects = append(projects, prj)
 		}
 	}
@@ -130,6 +133,7 @@ func GetAllProjects() string {
 //
 //go:wasmexport projects_add_funds
 func AddFunds(projectID string, amount int64, asset string) string {
+	state := getState()
 	if amount <= 0 {
 
 		return returnJsonResponse(
@@ -138,7 +142,7 @@ func AddFunds(projectID string, amount int64, asset string) string {
 			},
 		)
 	}
-	prj, err := loadProject(projectID)
+	prj, err := loadProject(state, projectID)
 	if err != nil {
 		return returnJsonResponse(
 			"projects_add_funds", false, map[string]interface{}{
@@ -171,7 +175,7 @@ func AddFunds(projectID string, amount int64, asset string) string {
 		}
 	}
 
-	saveProject(prj)
+	saveProject(state, prj)
 	sdk.Log("AddFunds: added " + strconv.FormatInt(amount, 10))
 	return returnJsonResponse(
 		"projects_add_funds", true, map[string]interface{}{
@@ -183,9 +187,10 @@ func AddFunds(projectID string, amount int64, asset string) string {
 
 //go:wasmexport projects_join
 func JoinProject(projectID string, amount int64, assetString string) string {
+	state := getState()
 	caller := getSenderAddress()
 
-	prj, err := loadProject(projectID)
+	prj, err := loadProject(state, projectID)
 	asset := sdk.Asset(assetString)
 
 	if err != nil {
@@ -273,7 +278,7 @@ func JoinProject(projectID string, amount int64, assetString string) string {
 		}
 		prj.Funds += amount
 	}
-	saveProject(prj)
+	saveProject(state, prj)
 	sdk.Log("JoinProject: " + projectID + " by " + caller)
 	return returnJsonResponse(
 		"projects_join", true, map[string]interface{}{
@@ -284,9 +289,10 @@ func JoinProject(projectID string, amount int64, assetString string) string {
 
 //go:wasmexport projects_leave
 func LeaveProject(projectID string, withdrawAmount int64, asset string) string {
+	state := getState()
 	caller := getSenderAddress()
 
-	prj, err := loadProject(projectID)
+	prj, err := loadProject(state, projectID)
 	if err != nil {
 		return returnJsonResponse(
 			"projects_leave", false, map[string]interface{}{
@@ -299,6 +305,14 @@ func LeaveProject(projectID string, withdrawAmount int64, asset string) string {
 		return returnJsonResponse(
 			"projects_leave", false, map[string]interface{}{
 				"details": "project is paused",
+			},
+		)
+	}
+	if prj.Owner == caller {
+		sdk.Log("LeaveProject: project owner can not leave")
+		return returnJsonResponse(
+			"projects_leave", false, map[string]interface{}{
+				"details": "project owner can not leave the project",
 			},
 		)
 	}
@@ -340,10 +354,10 @@ func LeaveProject(projectID string, withdrawAmount int64, asset string) string {
 			sdk.HiveTransfer(sdk.Address(caller), refund, sdk.Asset(asset))
 			delete(prj.Members, caller)
 			// remove votes
-			for _, pid := range listProposalIDsForProject(projectID) {
-				removeVote(projectID, pid, caller)
+			for _, pid := range listProposalIDsForProject(state, projectID) {
+				removeVote(state, projectID, pid, caller)
 			}
-			saveProject(prj)
+			saveProject(state, prj)
 			sdk.Log("LeaveProject: democratic refunded")
 			return returnJsonResponse(
 				"projects_leave", true, map[string]interface{}{
@@ -372,10 +386,10 @@ func LeaveProject(projectID string, withdrawAmount int64, asset string) string {
 		prj.Funds -= withdraw
 		sdk.HiveTransfer(sdk.Address(caller), withdraw, sdk.Asset(asset))
 		delete(prj.Members, caller)
-		for _, pid := range listProposalIDsForProject(projectID) {
-			removeVote(projectID, pid, caller)
+		for _, pid := range listProposalIDsForProject(state, projectID) {
+			removeVote(state, projectID, pid, caller)
 		}
-		saveProject(prj)
+		saveProject(state, prj)
 		sdk.Log("LeaveProject: withdrew stake")
 		return returnJsonResponse(
 			"projects_leave", true, map[string]interface{}{
@@ -387,7 +401,7 @@ func LeaveProject(projectID string, withdrawAmount int64, asset string) string {
 	// otherwise set exit requested timestamp
 	member.ExitRequested = now
 	prj.Members[caller] = member
-	saveProject(prj)
+	saveProject(state, prj)
 	return returnJsonResponse(
 		"projects_leave", true, map[string]interface{}{
 			"details": "exit requested.",
@@ -398,9 +412,10 @@ func LeaveProject(projectID string, withdrawAmount int64, asset string) string {
 
 //go:wasmexport projects_transfer_ownership
 func TransferProjectOwnership(projectID, newOwner string) string {
+	state := getState()
 	caller := getSenderAddress()
 
-	prj, err := loadProject(projectID)
+	prj, err := loadProject(state, projectID)
 	if err != nil {
 		return returnJsonResponse(
 			"projects_transfer_ownership", false, map[string]interface{}{
@@ -426,7 +441,7 @@ func TransferProjectOwnership(projectID, newOwner string) string {
 			LastActionAt: nowUnix(),
 		}
 	}
-	saveProject(prj)
+	saveProject(state, prj)
 	sdk.Log("TransferProjectOwnership: " + projectID + " -> " + newOwner)
 	return returnJsonResponse(
 		"projects_transfer_ownership", true, map[string]interface{}{
@@ -438,8 +453,9 @@ func TransferProjectOwnership(projectID, newOwner string) string {
 
 //go:wasmexport projects_pause
 func EmergencyPauseImmediate(projectID string, pause bool) string {
+	state := getState()
 	caller := getSenderAddress()
-	prj, err := loadProject(projectID)
+	prj, err := loadProject(state, projectID)
 	if err != nil {
 		return returnJsonResponse(
 			"projects_pause", false, map[string]interface{}{
@@ -456,7 +472,7 @@ func EmergencyPauseImmediate(projectID string, pause bool) string {
 
 	}
 	prj.Paused = pause
-	saveProject(prj)
+	saveProject(state, prj)
 	sdk.Log("EmergencyPauseImmediate: set paused=" + strconv.FormatBool(pause))
 	return returnJsonResponse(
 		"projects_pause", true, map[string]interface{}{

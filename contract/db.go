@@ -3,22 +3,21 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"okinoko_dao/sdk"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 // Contract State Persistence helpers
 ////////////////////////////////////////////////////////////////////////////////
 
-func saveProject(pro *Project) {
+func saveProject(state State, pro *Project) {
 	key := projectKey(pro.ID)
 	b, _ := json.Marshal(pro)
-	sdk.StateSetObject(key, string(b))
+	state.Set(key, string(b))
 }
 
-func loadProject(id string) (*Project, error) {
+func loadProject(state State, id string) (*Project, error) {
 	key := projectKey(id)
-	ptr := sdk.StateGetObject(key)
+	ptr := state.Get(key)
 	if ptr == nil {
 		return nil, fmt.Errorf("project %s not found", id)
 	}
@@ -29,8 +28,8 @@ func loadProject(id string) (*Project, error) {
 	return &pro, nil
 }
 
-func addProjectToIndex(id string) {
-	ptr := sdk.StateGetObject(projectsIndexKey)
+func addProjectToIndex(state State, id string) {
+	ptr := state.Get(projectsIndexKey)
 	var ids []string
 	if ptr != nil {
 		json.Unmarshal([]byte(*ptr), &ids)
@@ -43,11 +42,11 @@ func addProjectToIndex(id string) {
 	}
 	ids = append(ids, id)
 	b, _ := json.Marshal(ids)
-	sdk.StateSetObject(projectsIndexKey, string(b))
+	state.Set(projectsIndexKey, string(b))
 }
 
-func listAllProjectIDs() []string {
-	ptr := sdk.StateGetObject(projectsIndexKey)
+func listAllProjectIDs(state State) []string {
+	ptr := state.Get(projectsIndexKey)
 	if ptr == nil {
 		return []string{}
 	}
@@ -58,15 +57,15 @@ func listAllProjectIDs() []string {
 	return ids
 }
 
-func saveProposal(prpsl *Proposal) {
+func saveProposal(state State, prpsl *Proposal) {
 	key := proposalKey(prpsl.ID)
 	b, _ := json.Marshal(prpsl)
-	sdk.StateSetObject(key, string(b))
+	state.Set(key, string(b))
 }
 
-func loadProposal(id string) (*Proposal, error) {
+func loadProposal(state State, id string) (*Proposal, error) {
 	key := proposalKey(id)
-	ptr := sdk.StateGetObject(key)
+	ptr := state.Get(key)
 	if ptr == nil {
 		return nil, fmt.Errorf("proposal %s not found", id)
 	}
@@ -77,22 +76,22 @@ func loadProposal(id string) (*Proposal, error) {
 	return &prpsl, nil
 }
 
-func addProposalToProjectIndex(projectID, proposalID string) {
+func addProposalToProjectIndex(state State, projectID, proposalID string) {
 	key := projectProposalsIndexKey(projectID)
-	ptr := sdk.StateGetObject(key)
+	ptr := state.Get(key)
 	var ids []string
 	if ptr != nil {
 		json.Unmarshal([]byte(*ptr), &ids)
 	}
-	// TODO: avoid dublicates
+	// TODO: avoid duplicates
 	ids = append(ids, proposalID)
 	b, _ := json.Marshal(ids)
-	sdk.StateSetObject(key, string(b))
+	state.Set(key, string(b))
 }
 
-func listProposalIDsForProject(projectID string) []string {
+func listProposalIDsForProject(state State, projectID string) []string {
 	key := projectProposalsIndexKey(projectID)
-	ptr := sdk.StateGetObject(key)
+	ptr := state.Get(key)
 	if ptr == nil {
 		return []string{}
 	}
@@ -103,14 +102,14 @@ func listProposalIDsForProject(projectID string) []string {
 	return ids
 }
 
-func saveVote(vote *VoteRecord) {
+func saveVote(state State, vote *VoteRecord) {
 	key := voteKey(vote.ProjectID, vote.ProposalID, vote.Voter)
 	b, _ := json.Marshal(vote)
-	sdk.StateSetObject(key, string(b))
+	state.Set(key, string(b))
 
 	// ensure voter listed in index for iteration (store list under project:proposal:voters)
 	votersKey := fmt.Sprintf("proposal:%s:%s:voters", vote.ProjectID, vote.ProposalID)
-	ptr := sdk.StateGetObject(votersKey)
+	ptr := state.Get(votersKey)
 	var voters []string
 	if ptr != nil {
 		json.Unmarshal([]byte(*ptr), &voters)
@@ -125,13 +124,13 @@ func saveVote(vote *VoteRecord) {
 	if !seen {
 		voters = append(voters, vote.Voter)
 		nb, _ := json.Marshal(voters)
-		sdk.StateSetObject(votersKey, string(nb))
+		state.Set(votersKey, string(nb))
 	}
 }
 
-func loadVotesForProposal(projectID, proposalID string) []VoteRecord {
+func loadVotesForProposal(state State, projectID, proposalID string) []VoteRecord {
 	votersKey := fmt.Sprintf("proposal:%s:%s:voters", projectID, proposalID)
-	ptr := sdk.StateGetObject(votersKey)
+	ptr := state.Get(votersKey)
 	if ptr == nil {
 		return []VoteRecord{}
 	}
@@ -142,7 +141,7 @@ func loadVotesForProposal(projectID, proposalID string) []VoteRecord {
 	out := make([]VoteRecord, 0, len(voters))
 	for _, v := range voters {
 		vk := voteKey(projectID, proposalID, v)
-		vp := sdk.StateGetObject(vk)
+		vp := state.Get(vk)
 		if vp == nil {
 			continue
 		}
@@ -155,12 +154,13 @@ func loadVotesForProposal(projectID, proposalID string) []VoteRecord {
 }
 
 // remove vote only needed if member leaves project while still voted on an active proposal
-func removeVote(projectID, proposalID, voter string) {
+func removeVote(state State, projectID, proposalID, voter string) {
 	key := voteKey(projectID, proposalID, voter)
-	sdk.StateDeleteObject(key)
+	state.Delete(key)
+
 	// remove from voter list
 	votersKey := fmt.Sprintf("proposal:%s:%s:voters", projectID, proposalID)
-	ptr := sdk.StateGetObject(votersKey)
+	ptr := state.Get(votersKey)
 	if ptr == nil {
 		return
 	}
@@ -173,5 +173,5 @@ func removeVote(projectID, proposalID, voter string) {
 		}
 	}
 	nb, _ := json.Marshal(newV)
-	sdk.StateSetObject(votersKey, string(nb))
+	state.Set(votersKey, string(nb))
 }

@@ -23,9 +23,10 @@ func CreateProposal(
 	receiver string,
 	amount int64,
 ) string {
+	state := getState()
 	caller := getSenderAddress()
 
-	prj, err := loadProject(projectID)
+	prj, err := loadProject(state, projectID)
 	if err != nil {
 		return returnJsonResponse(
 			"proposals_create", false, map[string]interface{}{
@@ -98,7 +99,7 @@ func CreateProposal(
 	if prj.Config.ProposalCost > 0 {
 		sdk.HiveDraw(prj.Config.ProposalCost, sdk.Asset("VSC")) // NOTE: same placeholder as your original code
 		prj.Funds += prj.Config.ProposalCost
-		saveProject(prj)
+		saveProject(state, prj)
 	}
 
 	// Create proposal
@@ -140,8 +141,8 @@ func CreateProposal(
 		prpsl.SnapshotTotal = total
 	}
 
-	saveProposal(prpsl)
-	addProposalToProjectIndex(projectID, id)
+	saveProposal(state, prpsl)
+	addProposalToProjectIndex(state, projectID, id)
 	sdk.Log("CreateProposal: " + id + " in project " + projectID)
 
 	return returnJsonResponse(
@@ -159,10 +160,11 @@ func CreateProposal(
 //
 //go:wasmexport proposals_vote
 func VoteProposal(projectID, proposalID string, choicesJSON string, commitHash string) string {
+	state := getState()
 	caller := getSenderAddress()
 	now := nowUnix()
 
-	prj, err := loadProject(projectID)
+	prj, err := loadProject(state, projectID)
 	if err != nil {
 		return returnJsonResponse(
 			"proposals_vote", false, map[string]interface{}{
@@ -178,7 +180,7 @@ func VoteProposal(projectID, proposalID string, choicesJSON string, commitHash s
 		)
 	}
 
-	prpsl, err := loadProposal(proposalID)
+	prpsl, err := loadProposal(state, proposalID)
 	if err != nil {
 		return returnJsonResponse(
 			"proposals_vote", false, map[string]interface{}{
@@ -304,7 +306,7 @@ func VoteProposal(projectID, proposalID string, choicesJSON string, commitHash s
 		VotedAt:     now,
 	}
 
-	saveVote(&vote)
+	saveVote(state, &vote)
 	sdk.Log("VoteProposal: voter " + caller + " for " + proposalID)
 	return returnJsonResponse(
 		"proposals_vote", true, map[string]interface{}{
@@ -319,7 +321,8 @@ func VoteProposal(projectID, proposalID string, choicesJSON string, commitHash s
 //
 //go:wasmexport proposals_tally
 func TallyProposal(projectID, proposalID string) string {
-	prj, err := loadProject(projectID)
+	state := getState()
+	prj, err := loadProject(state, projectID)
 	if err != nil {
 		return returnJsonResponse(
 			"proposals_tally", false, map[string]interface{}{
@@ -327,7 +330,7 @@ func TallyProposal(projectID, proposalID string) string {
 			},
 		)
 	}
-	prpsl, err := loadProposal(proposalID)
+	prpsl, err := loadProposal(state, proposalID)
 	if err != nil {
 		return returnJsonResponse(
 			"proposals_tally", false, map[string]interface{}{
@@ -364,7 +367,7 @@ func TallyProposal(projectID, proposalID string) string {
 	}
 
 	// gather votes
-	votes := loadVotesForProposal(projectID, proposalID)
+	votes := loadVotesForProposal(state, projectID, proposalID)
 	// compute participation and option counts
 	var participation int64 = 0
 	optionCounts := make(map[int]int64)
@@ -384,7 +387,7 @@ func TallyProposal(projectID, proposalID string) string {
 		prpsl.Passed = false
 		prpsl.State = StateFailed
 		prpsl.FinalizedAt = nowUnix()
-		saveProposal(prpsl)
+		saveProposal(state, prpsl)
 		sdk.Log("TallyProposal: quorum not reached")
 		return returnJsonResponse(
 			"proposals_tally", false, map[string]interface{}{
@@ -429,7 +432,7 @@ func TallyProposal(projectID, proposalID string) string {
 	}
 
 	prpsl.FinalizedAt = nowUnix()
-	saveProposal(prpsl)
+	saveProposal(state, prpsl)
 	sdk.Log("TallyProposal: tallied - passed=" + strconv.FormatBool(prpsl.Passed))
 	return returnJsonResponse(
 		"proposals_tally", true, map[string]interface{}{
@@ -447,9 +450,10 @@ func TallyProposal(projectID, proposalID string) string {
 //
 //go:wasmexport proposals_execute
 func ExecuteProposal(projectID, proposalID, asset string) string {
+	state := getState()
 	caller := getSenderAddress()
 
-	prj, err := loadProject(projectID)
+	prj, err := loadProject(state, projectID)
 	if err != nil {
 		return returnJsonResponse(
 			"proposals_execute", false, map[string]interface{}{
@@ -464,7 +468,7 @@ func ExecuteProposal(projectID, proposalID, asset string) string {
 			},
 		)
 	}
-	prpsl, err := loadProposal(proposalID)
+	prpsl, err := loadProposal(state, proposalID)
 	if err != nil {
 		return returnJsonResponse(
 			"proposals_execute", false, map[string]interface{}{
@@ -531,14 +535,14 @@ func ExecuteProposal(projectID, proposalID, asset string) string {
 		prpsl.Executed = true
 		prpsl.State = StateExecuted
 		prpsl.FinalizedAt = nowUnix()
-		saveProposal(prpsl)
-		saveProject(prj)
+		saveProposal(state, prpsl)
+		saveProject(state, prj)
 		// reward proposer if enabled
 		if prj.Config.RewardEnabled && prj.Config.RewardPayoutOnExecute && prj.Config.RewardAmount > 0 && prj.Funds >= prj.Config.RewardAmount {
 			prj.Funds -= prj.Config.RewardAmount
 			// transfer reward to proposer
 			sdk.HiveTransfer(sdk.Address(prpsl.Creator), prj.Config.RewardAmount, sdk.Asset(asset))
-			saveProject(prj)
+			saveProject(state, prj)
 		}
 		sdk.Log("ExecuteProposal: transfer executed " + proposalID)
 		return returnJsonResponse(
@@ -581,8 +585,8 @@ func ExecuteProposal(projectID, proposalID, asset string) string {
 				prpsl.Executed = true
 				prpsl.State = StateExecuted
 				prpsl.FinalizedAt = nowUnix()
-				saveProject(prj)
-				saveProposal(prpsl)
+				saveProject(state, prj)
+				saveProposal(state, prpsl)
 				sdk.Log("ExecuteProposal: updated threshold")
 				return returnJsonResponse(
 					"proposals_execute", true, map[string]interface{}{
@@ -602,8 +606,8 @@ func ExecuteProposal(projectID, proposalID, asset string) string {
 			prpsl.Executed = true
 			prpsl.State = StateExecuted
 			prpsl.FinalizedAt = nowUnix()
-			saveProject(prj)
-			saveProposal(prpsl)
+			saveProject(state, prj)
+			saveProposal(state, prpsl)
 			sdk.Log("ExecuteProposal: toggled pause")
 			return returnJsonResponse(
 				"proposals_execute", true, map[string]interface{}{
@@ -625,7 +629,7 @@ func ExecuteProposal(projectID, proposalID, asset string) string {
 	prpsl.Executed = true
 	prpsl.State = StateExecuted
 	prpsl.FinalizedAt = nowUnix()
-	saveProposal(prpsl)
+	saveProposal(state, prpsl)
 	sdk.Log("ExecuteProposal: marked executed without transfer " + proposalID)
 	return returnJsonResponse(
 		"proposals_execute", true, map[string]interface{}{
@@ -640,7 +644,8 @@ func ExecuteProposal(projectID, proposalID, asset string) string {
 //
 //go:wasmexport proposals_get_one
 func GetProposal(proposalID string) string {
-	prpsl, err := loadProposal(proposalID)
+	state := getState()
+	prpsl, err := loadProposal(state, proposalID)
 	if err != nil {
 		return returnJsonResponse(
 			"proposals_get_one", false, map[string]interface{}{
@@ -661,10 +666,11 @@ func GetProposal(proposalID string) string {
 //
 //go:wasmexport proposals_get_all
 func GetProjectProposals(projectID string) string {
-	ids := listProposalIDsForProject(projectID)
+	state := getState()
+	ids := listProposalIDsForProject(state, projectID)
 	proposals := make([]Proposal, 0, len(ids))
 	for _, id := range ids {
-		if prpsl, err := loadProposal(id); err == nil {
+		if prpsl, err := loadProposal(state, id); err == nil {
 			proposals = append(proposals, *prpsl)
 		}
 	}
