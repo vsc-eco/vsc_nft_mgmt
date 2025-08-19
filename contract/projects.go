@@ -7,13 +7,12 @@ import (
 )
 
 //go:wasmexport projects_create
-func CreateProject(name, description, jsonMetadata string, cfgJSON string, amount int64, assetJSON string) *string {
-	state := getState()
+func CreateProject(name, description, jsonMetadata string, cfgJSON string, amount int64, asset string) *string {
 	if amount <= 0 {
 		sdkInterface.Log("CreateProject: amount must be > 1")
 		return returnJsonResponse(
-			"CreatePrprojects_createoject", false, map[string]interface{}{
-				"details": "mount must be > 1",
+			"projects_create", false, map[string]interface{}{
+				"details": "amount must be > 1",
 			},
 		)
 
@@ -29,8 +28,7 @@ func CreateProject(name, description, jsonMetadata string, cfgJSON string, amoun
 		)
 
 	}
-	var asset sdk.Asset
-	if err := FromJSON(assetJSON, &asset); err != nil {
+	if asset != sdk.AssetHive.String() || asset != sdk.AssetHbd.String() {
 		return returnJsonResponse(
 			"projects_create", false, map[string]interface{}{
 				"details": "invalid asset",
@@ -39,9 +37,10 @@ func CreateProject(name, description, jsonMetadata string, cfgJSON string, amoun
 
 	}
 
+	state := getState()
 	creator := getSenderAddress()
 
-	sdk.HiveDraw(amount, sdk.Asset(asset))
+	sdk.HiveDraw(amount, sdk.Asset(asset)) // TODO: first check balance of calle
 
 	id := generateGUID()
 	now := nowUnix()
@@ -55,7 +54,7 @@ func CreateProject(name, description, jsonMetadata string, cfgJSON string, amoun
 		Config:       *cfg,
 		Members:      map[string]Member{},
 		Funds:        amount,
-		FundsAsset:   asset,
+		FundsAsset:   sdk.Asset(asset),
 		CreatedAt:    now,
 		Paused:       false,
 	}
