@@ -1,7 +1,7 @@
 package contract
 
 import (
-	"vsc_nft_management/sdk" // import your real SDK
+	"vsc_nft_mgmt/sdk" // import your real SDK
 )
 
 // SDK interface

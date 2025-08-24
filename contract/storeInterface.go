@@ -3,7 +3,7 @@ package contract
 import (
 	"encoding/json"
 	"os"
-	"vsc_nft_management/sdk"
+	"vsc_nft_mgmt/sdk"
 )
 
 type Store interface {

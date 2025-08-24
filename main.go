@@ -6,7 +6,7 @@
 package main
 
 import (
-	"vsc_nft_management/contract"
+	"vsc_nft_mgmt/contract"
 )
 
 func main() {
