@@ -16,10 +16,15 @@ func getSenderAddress() string {
 	return sdkInterface.GetEnv().Sender.Address.String()
 }
 
-func nftKey(id string) string              { return fmt.Sprintf("nft:%s", id) }
-func collectionKey(id string) string       { return fmt.Sprintf("collection:%s", id) }
-func adminKey(id string) string            { return fmt.Sprintf("admin:%s", id) }
-func ownerCollectionsKey(id string) string { return fmt.Sprintf("ownercollections:%s", id) }
+func nftKey(nftId string) string {
+	return fmt.Sprintf("nft:%s", nftId)
+}
+func collectionKey(collectionId string) string {
+	return fmt.Sprintf("collection:%s", collectionId)
+}
+func adminKey(keyName string) string {
+	return fmt.Sprintf("admin:%s", keyName)
+}
 
 // generateGUID returns a random UUID v4 string
 func generateUUID() string {

@@ -34,9 +34,9 @@ func CreateNFTCollection(payload string) *string {
 	abortOnError(validationErrors, "validation failed")
 
 	creator := getSenderAddress()
-	if collectionExists(creator, input.Name) {
-		abortOnError(fmt.Errorf("collection with name '%s' already exists", input.Name), "")
-	}
+	// if collectionExists(creator, input.Name) {
+	// 	abortOnError(fmt.Errorf("collection with name '%s' already exists", input.Name), "")
+	// }
 
 	collection := NFTCollection{
 		ID:           generateUUID(),
@@ -56,6 +56,30 @@ func CreateNFTCollection(payload string) *string {
 	)
 }
 
+//go:wasmexport collection_getOne
+func GetCollection(id string) string {
+	collection, err := loadNFTCollection(id)
+	abortOnError(err, "failed to load collection")
+	jsonStr, err := ToJSON(collection)
+	abortOnError(err, "failed to marshal collection")
+	return jsonStr
+}
+
+//go:wasmexport collection_getAllForUser
+func GetNFTCollectionsForOwner(owner string) string {
+	collectionIds, err := GetIDsFromIndex(idxCollectionsOfOwnerPrefix + owner)
+	abortOnError(err, "loading collections failed")
+	collections := make([]NFTCollection, 0)
+	for _, n := range collectionIds {
+		currentCollection, err := loadNFTCollection(n)
+		abortOnError(err, "loading collection failed")
+		collections = append(collections, *currentCollection)
+	}
+	jsonStr, err := ToJSON(collections)
+	abortOnError(err, "failed to marshal collections")
+	return jsonStr
+}
+
 // Contract State Persistence
 func saveNFTCollection(collection *NFTCollection) error {
 	b, err := json.Marshal(collection)
@@ -63,29 +87,23 @@ func saveNFTCollection(collection *NFTCollection) error {
 		return err
 	}
 
-	// save collection itself
-	idKey := collectionKey(collection.ID)
-	getStore().Set(idKey, string(b))
-	// save list of all collection names used by the owner to avoid dublicates
-	ownerCollectionsKey := ownerCollectionsKey(collection.Owner)
-	existingPtr := getStore().Get(ownerCollectionsKey)
+	collectionIds, err := GetIDsFromIndex(idxCollectionsOfOwnerPrefix + collection.Owner)
+	abortOnError(err, "loading collections failed")
 
-	var names []string
-	if existingPtr != nil {
-		_ = json.Unmarshal([]byte(*existingPtr), &names)
-	}
-
-	// Append new collection name if not already in the list
-	for _, n := range names {
-		if n == collection.Name {
+	// save list of all collection ids created by the owner for quicker queries
+	// Append new collection id if name is unique for the user
+	// if there is already a collection with the same name > abort
+	for _, n := range collectionIds {
+		currentCollection, err := loadNFTCollection(n)
+		abortOnError(err, "loading collection failed")
+		if currentCollection.Name == collection.Name {
 			return fmt.Errorf("collection name already exists for owner")
 		}
 	}
-	names = append(names, collection.Name)
-
-	// Save back
-	data, _ := json.Marshal(names)
-	getStore().Set(ownerCollectionsKey, string(data))
+	// save collection itself
+	idKey := collectionKey(collection.ID)
+	getStore().Set(idKey, string(b))
+	AddIDToIndex(idxCollectionsOfOwnerPrefix+collection.Owner, collection.ID)
 
 	return nil
 }
@@ -105,11 +123,6 @@ func loadNFTCollection(id string) (*NFTCollection, error) {
 		return nil, fmt.Errorf("failed unmarshal nft collection %s: %v", id, err)
 	}
 	return collection, nil
-}
-
-func collectionExists(owner, name string) bool {
-	key := fmt.Sprintf("collection:%s:%s", owner, name)
-	return getStore().Get(key) != nil
 }
 
 func (c *CreateNFTCollectionArgs) Validate() error {
