@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"vsc_nft_mgmt/sdk"
 )
 
 const (
@@ -17,8 +18,8 @@ const (
 
 type NFT struct {
 	ID           string      `json:"id"`
-	Creator      string      `json:"creator"`
-	Owner        string      `json:"owner"`
+	Creator      sdk.Address `json:"creator"`
+	Owner        sdk.Address `json:"owner"`
 	Version      int         `json:"version"`
 	CreationTxID string      `json:"creationTxID"`
 	Collection   string      `json:"collection"`
@@ -41,9 +42,9 @@ type NFTPrefs struct {
 }
 
 type TransferNFTArgs struct {
-	NftID      string `json:"id"`
-	Collection string `json:"collection"`
-	Owner      string `json:"owner"`
+	NftID      string      `json:"id"`
+	Collection string      `json:"collection"`
+	Owner      sdk.Address `json:"owner"`
 }
 
 type MintNFTArgs struct {
@@ -304,8 +305,8 @@ func validateMintArgs(
 	name string,
 	description string,
 	metadata map[string]string,
-	collectionOwner string,
-	caller string,
+	collectionOwner sdk.Address,
+	caller sdk.Address,
 ) error {
 	if name == "" {
 		return errors.New("name is mandatory")
@@ -340,8 +341,8 @@ func validateMintArgs(
 }
 
 func createAndSaveNFT(
-	creator string,
-	owner string,
+	creator sdk.Address,
+	owner sdk.Address,
 	collection string,
 	description string,
 	transferable bool,
@@ -391,7 +392,7 @@ func createAndSaveNFT(
 	saveNFT(nft)
 	if nft.NFTPrefs != nil {
 		// only store unique nfts or genesis editions to creator index
-		err := AddIDToIndex(idxNFTsOfCreatorPrefix+nft.Creator, nftID)
+		err := AddIDToIndex(idxNFTsOfCreatorPrefix+nft.Creator.String(), nftID)
 		abortOnError(err, "failed to add nft to index")
 	}
 	if nft.Edition != nil {

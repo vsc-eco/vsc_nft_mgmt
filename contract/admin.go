@@ -2,20 +2,20 @@ package contract
 
 import (
 	"fmt"
+	"vsc_nft_mgmt/sdk"
 )
 
 // Set the upcoming market contract
 //
 //go:wasmexport admin_set_market
 func SetMarketContract(address string) *string {
-
 	if address == "" {
 		abortCustom("market contract address is mandatory")
 	}
 
 	creator := getSenderAddress()
-	contractOwner := "contractOwnerAddress" // TODO: set vsc administrative account
-	if creator != contractOwner {
+	contractOwner := "contractOwnerAddress" // TODO: set vsc administrative account here
+	if creator.String() != contractOwner {
 		abortCustom(fmt.Sprintf("market contract can only be set by %s", contractOwner))
 
 	}
@@ -27,10 +27,10 @@ func SetMarketContract(address string) *string {
 	)
 }
 
-func getMarketContract() (string, error) {
+func getMarketContract() (sdk.Address, error) {
 	contract := getStore().Get(adminKey("marketContract"))
 	if contract == nil {
 		return "", fmt.Errorf("marketContract not set")
 	}
-	return *contract, nil
+	return sdk.Address(*contract), nil
 }

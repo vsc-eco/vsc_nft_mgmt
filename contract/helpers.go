@@ -6,14 +6,15 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"vsc_nft_mgmt/sdk"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 // Helpers: keys, guids, time
 ////////////////////////////////////////////////////////////////////////////////
 
-func getSenderAddress() string {
-	return sdkInterface.GetEnv().Sender.Address.String()
+func getSenderAddress() sdk.Address {
+	return sdkInterface.GetEnv().Sender.Address
 }
 
 func nftKey(nftId string) string {

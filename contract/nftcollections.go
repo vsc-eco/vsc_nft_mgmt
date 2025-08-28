@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"vsc_nft_mgmt/sdk"
 )
 
 const (
@@ -12,11 +13,11 @@ const (
 )
 
 type NFTCollection struct {
-	ID           string `json:"id"`
-	Name         string `json:"name"`
-	Description  string `json:"description"`
-	Owner        string `json:"owner"`
-	CreationTxID string `json:"txid"`
+	ID           string      `json:"id"`
+	Name         string      `json:"name"`
+	Description  string      `json:"description"`
+	Owner        sdk.Address `json:"owner"`
+	CreationTxID string      `json:"txid"`
 }
 
 // function arguments
@@ -87,7 +88,7 @@ func saveNFTCollection(collection *NFTCollection) error {
 		return err
 	}
 
-	collectionIds, err := GetIDsFromIndex(idxCollectionsOfOwnerPrefix + collection.Owner)
+	collectionIds, err := GetIDsFromIndex(idxCollectionsOfOwnerPrefix + collection.Owner.String())
 	abortOnError(err, "loading collections failed")
 
 	// save list of all collection ids created by the owner for quicker queries
@@ -103,7 +104,7 @@ func saveNFTCollection(collection *NFTCollection) error {
 	// save collection itself
 	idKey := collectionKey(collection.ID)
 	getStore().Set(idKey, string(b))
-	AddIDToIndex(idxCollectionsOfOwnerPrefix+collection.Owner, collection.ID)
+	AddIDToIndex(idxCollectionsOfOwnerPrefix+collection.Owner.String(), collection.ID)
 
 	return nil
 }
