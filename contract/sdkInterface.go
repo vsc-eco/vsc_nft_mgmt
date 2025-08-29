@@ -1,4 +1,4 @@
-package contract
+package main
 
 import (
 	"vsc_nft_mgmt/sdk" // import your real SDK
@@ -13,6 +13,7 @@ type SDKInterface interface {
 }
 
 // singleton used everywhere
+// but for some reason I had to use GetStore() everywhere
 var sdkInterface SDKInterface
 
 func InitSDKInterface(mock bool) {

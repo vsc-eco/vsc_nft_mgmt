@@ -1,4 +1,4 @@
-package contract
+package main
 
 import (
 	"crypto/rand"

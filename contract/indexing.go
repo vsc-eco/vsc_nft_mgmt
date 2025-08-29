@@ -1,4 +1,4 @@
-package contract
+package main
 
 // maintaining index keys for querying data in various ways
 
@@ -10,12 +10,12 @@ import (
 
 // index key prefixes
 const (
-	maxChunkSize                      = 5000                     // all indexes are split into chunks of X entries to avoid overflowing the max size of a key/value in the contract state
-	idxNFTsOfCreatorPrefix            = "idx:nfts:creator:"      // + creator		// holds nfts minted by a given user (only unique and genesis editions)
-	idxCollectionsOfOwnerPrefix       = "idx:collection:owner:"  // + owner			// holds collections for a given user
-	idxNFTsInCollectionPrefix         = "idx:nfts:collection:"   // + collection	// holds nfts contained in a give collection
-	idxEditionsOfGenesisNFTs          = "idx:editions:genesis:"  // + genesisId		// holds editions for a given genesis edition
-	idxAvailableEditionsOfGenesisNFTs = "idx:available:genesis:" // + genesisId		// holds available editions for a given genesis edition
+	maxChunkSize           = 5000               // all indexes are split into chunks of X entries to avoid overflowing the max size of a key/value in the contract state
+	NFTsCreator            = "nfts:creator"     // + creator			// holds nfts minted by a given user (only unique and genesis editions)
+	CollectionsOwner       = "cols:owner:"      // + owner			// holds collections for a given user (to avoid dublicate names)
+	NFTsCollection         = "nfts:col:"        // + collection		// holds nfts contained in a give collection
+	AllEditionsOfGenesis   = "e_all:genesis:"   // + genesisId		// holds editions for a given genesis edition
+	AvailEditionsOfGenesis = "e_avail:genesis:" // + genesisId		// holds available editions for a given genesis edition
 )
 
 // stores number of chunks for a base index
@@ -43,7 +43,7 @@ func setChunkCount(baseKey string, n int) {
 }
 
 // AddIDToIndex ensures id exists across all chunks (no duplicates).
-func AddIDToIndex(baseKey string, id string) error {
+func AddIDToIndex(baseKey string, id string) {
 	chunks := getChunkCount(baseKey)
 	// search existing chunks for duplicates or free space
 	for i := 0; i < chunks; i++ {
@@ -52,12 +52,13 @@ func AddIDToIndex(baseKey string, id string) error {
 		var ids []string
 		if ptr != nil && *ptr != "" {
 			if err := json.Unmarshal([]byte(*ptr), &ids); err != nil {
-				return fmt.Errorf("unmarshal index %s: %w", key, err)
+				abortCustom(fmt.Sprintf("unmarshal index %s: %w", key, err))
+
 			}
 			// duplicate check
 			for _, e := range ids {
 				if e == id {
-					return nil // already present
+					return // already present
 				}
 			}
 			// append if space
@@ -65,10 +66,10 @@ func AddIDToIndex(baseKey string, id string) error {
 				ids = append(ids, id)
 				b, err := json.Marshal(ids)
 				if err != nil {
-					return err
+					abortCustom(fmt.Sprintf("marshal index %s: %w", key, err))
 				}
 				getStore().Set(key, string(b))
-				return nil
+				return
 			}
 		}
 	}
@@ -77,15 +78,15 @@ func AddIDToIndex(baseKey string, id string) error {
 	ids := []string{id}
 	b, err := json.Marshal(ids)
 	if err != nil {
-		return err
+		abortCustom(fmt.Sprintf("marshal index %s: %w", key, err))
 	}
 	getStore().Set(key, string(b))
 	setChunkCount(baseKey, chunks+1)
-	return nil
+	return
 }
 
 // RemoveIDFromIndex removes id from whichever chunk it’s in.
-func RemoveIDFromIndex(baseKey string, id string) error {
+func RemoveIDFromIndex(baseKey string, id string) {
 	chunks := getChunkCount(baseKey)
 	for i := 0; i < chunks; i++ {
 		key := chunkKey(baseKey, i)
@@ -95,7 +96,8 @@ func RemoveIDFromIndex(baseKey string, id string) error {
 		}
 		var ids []string
 		if err := json.Unmarshal([]byte(*ptr), &ids); err != nil {
-			return fmt.Errorf("unmarshal index %s: %w", key, err)
+			abortCustom(fmt.Sprintf("unmarshal index %s: %w", key, err))
+
 		}
 		newIds := ids[:0]
 		found := false
@@ -110,17 +112,17 @@ func RemoveIDFromIndex(baseKey string, id string) error {
 			// save updated chunk
 			b, err := json.Marshal(newIds)
 			if err != nil {
-				return err
+				abortCustom(fmt.Sprintf("marshal index %s: %w", key, err))
 			}
 			getStore().Set(key, string(b))
-			return nil
+
 		}
 	}
-	return nil
+
 }
 
 // GetIDsFromIndex collects all IDs across all chunks.
-func GetIDsFromIndex(baseKey string) ([]string, error) {
+func GetIDsFromIndex(baseKey string) []string {
 	all := []string{}
 	chunks := getChunkCount(baseKey)
 	for i := 0; i < chunks; i++ {
@@ -131,11 +133,12 @@ func GetIDsFromIndex(baseKey string) ([]string, error) {
 		}
 		var ids []string
 		if err := json.Unmarshal([]byte(*ptr), &ids); err != nil {
-			return nil, fmt.Errorf("unmarshal index %s: %w", key, err)
+			abortCustom(fmt.Sprintf("unmarshal index %s: %w", key, err))
+			return nil // will not happen because of error
 		}
 		all = append(all, ids...)
 	}
-	return all, nil
+	return all
 }
 
 // GetOneIDFromIndex checks all chunks for a specific id.
@@ -161,18 +164,11 @@ func GetOneIDFromIndex(baseKey string, id string) (string, error) {
 }
 
 // updateBoolIndex ensures the objectId is in the correct boolean index chunk
-func updateBoolIndex(baseKey string, objectId string, targetBool bool) error {
+func updateBoolIndex(baseKey string, objectId string, targetBool bool) {
 	// remove from the opposite boolean index
 	oppositeKey := baseKey + strconv.FormatBool(!targetBool)
-	if err := RemoveIDFromIndex(oppositeKey, objectId); err != nil {
-		return fmt.Errorf("remove from opposite index: %w", err)
-	}
-
+	RemoveIDFromIndex(oppositeKey, objectId)
 	// add to the correct boolean index
 	correctKey := baseKey + strconv.FormatBool(targetBool)
-	if err := AddIDToIndex(correctKey, objectId); err != nil {
-		return fmt.Errorf("add to correct index: %w", err)
-	}
-
-	return nil
+	AddIDToIndex(correctKey, objectId)
 }

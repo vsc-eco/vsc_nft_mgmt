@@ -1,4 +1,4 @@
-package contract
+package main
 
 import (
 	"encoding/json"
@@ -13,6 +13,7 @@ type Store interface {
 }
 
 // singleton used everywhere
+// but for some reason I had to use GetStore() everywhere
 var store Store
 
 func InitState(localDebug bool, filename string) {
