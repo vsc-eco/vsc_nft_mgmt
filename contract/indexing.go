@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"vsc_nft_mgmt/sdk"
 )
 
 // index key prefixes
@@ -16,6 +17,8 @@ const (
 	NFTsCollection         = "nfts:col:"        // + collection		// holds nfts contained in a give collection
 	AllEditionsOfGenesis   = "e_all:genesis:"   // + genesisId		// holds editions for a given genesis edition
 	AvailEditionsOfGenesis = "e_avail:genesis:" // + genesisId		// holds available editions for a given genesis edition
+	NFTsCount              = "count:nfts"       // holds a int counter for nfts (to create new ids)
+	CollectionCount        = "count:col"        // holds a int counter for collections (to create new ids)
 )
 
 // stores number of chunks for a base index
@@ -29,7 +32,7 @@ func chunkKey(base string, chunk int) string {
 
 // get number of chunks for an index
 func getChunkCount(baseKey string) int {
-	ptr := getStore().Get(chunkCounterKey(baseKey))
+	ptr := sdk.StateGetObject(chunkCounterKey(baseKey))
 	if ptr == nil || *ptr == "" {
 		return 0
 	}
@@ -39,7 +42,20 @@ func getChunkCount(baseKey string) int {
 
 // set number of chunks
 func setChunkCount(baseKey string, n int) {
-	getStore().Set(chunkCounterKey(baseKey), strconv.Itoa(n))
+	sdk.StateSetObject(chunkCounterKey(baseKey), strconv.Itoa(n))
+}
+
+func getCount(key string) int {
+	ptr := sdk.StateGetObject(key)
+	if ptr == nil || *ptr == "" {
+		return 0
+	}
+	n, _ := strconv.Atoi(*ptr)
+	return n
+}
+
+func setCount(key string, n int) {
+	sdk.StateSetObject(key, strconv.Itoa(n))
 }
 
 // AddIDToIndex ensures id exists across all chunks (no duplicates).
@@ -48,11 +64,11 @@ func AddIDToIndex(baseKey string, id string) {
 	// search existing chunks for duplicates or free space
 	for i := 0; i < chunks; i++ {
 		key := chunkKey(baseKey, i)
-		ptr := getStore().Get(key)
+		ptr := sdk.StateGetObject(key)
 		var ids []string
 		if ptr != nil && *ptr != "" {
 			if err := json.Unmarshal([]byte(*ptr), &ids); err != nil {
-				abortCustom(fmt.Sprintf("unmarshal index %s: %w", key, err))
+				sdk.Abort(fmt.Sprintf("unmarshal index %s: %w", key, err))
 
 			}
 			// duplicate check
@@ -66,9 +82,9 @@ func AddIDToIndex(baseKey string, id string) {
 				ids = append(ids, id)
 				b, err := json.Marshal(ids)
 				if err != nil {
-					abortCustom(fmt.Sprintf("marshal index %s: %w", key, err))
+					sdk.Abort(fmt.Sprintf("marshal index %s: %w", key, err))
 				}
-				getStore().Set(key, string(b))
+				sdk.StateSetObject(key, string(b))
 				return
 			}
 		}
@@ -78,9 +94,9 @@ func AddIDToIndex(baseKey string, id string) {
 	ids := []string{id}
 	b, err := json.Marshal(ids)
 	if err != nil {
-		abortCustom(fmt.Sprintf("marshal index %s: %w", key, err))
+		sdk.Abort(fmt.Sprintf("marshal index %s: %w", key, err))
 	}
-	getStore().Set(key, string(b))
+	sdk.StateSetObject(key, string(b))
 	setChunkCount(baseKey, chunks+1)
 	return
 }
@@ -90,13 +106,13 @@ func RemoveIDFromIndex(baseKey string, id string) {
 	chunks := getChunkCount(baseKey)
 	for i := 0; i < chunks; i++ {
 		key := chunkKey(baseKey, i)
-		ptr := getStore().Get(key)
+		ptr := sdk.StateGetObject(key)
 		if ptr == nil || *ptr == "" {
 			continue
 		}
 		var ids []string
 		if err := json.Unmarshal([]byte(*ptr), &ids); err != nil {
-			abortCustom(fmt.Sprintf("unmarshal index %s: %w", key, err))
+			sdk.Abort(fmt.Sprintf("unmarshal index %s: %w", key, err))
 
 		}
 		newIds := ids[:0]
@@ -112,9 +128,9 @@ func RemoveIDFromIndex(baseKey string, id string) {
 			// save updated chunk
 			b, err := json.Marshal(newIds)
 			if err != nil {
-				abortCustom(fmt.Sprintf("marshal index %s: %w", key, err))
+				sdk.Abort(fmt.Sprintf("marshal index %s: %w", key, err))
 			}
-			getStore().Set(key, string(b))
+			sdk.StateSetObject(key, string(b))
 
 		}
 	}
@@ -127,13 +143,13 @@ func GetIDsFromIndex(baseKey string) []string {
 	chunks := getChunkCount(baseKey)
 	for i := 0; i < chunks; i++ {
 		key := chunkKey(baseKey, i)
-		ptr := getStore().Get(key)
+		ptr := sdk.StateGetObject(key)
 		if ptr == nil || *ptr == "" {
 			continue
 		}
 		var ids []string
 		if err := json.Unmarshal([]byte(*ptr), &ids); err != nil {
-			abortCustom(fmt.Sprintf("unmarshal index %s: %w", key, err))
+			sdk.Abort(fmt.Sprintf("unmarshal index %s: %w", key, err))
 			return nil // will not happen because of error
 		}
 		all = append(all, ids...)
@@ -146,7 +162,7 @@ func GetOneIDFromIndex(baseKey string, id string) (string, error) {
 	chunks := getChunkCount(baseKey)
 	for i := 0; i < chunks; i++ {
 		key := chunkKey(baseKey, i)
-		ptr := getStore().Get(key)
+		ptr := sdk.StateGetObject(key)
 		if ptr == nil || *ptr == "" {
 			continue
 		}

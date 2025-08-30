@@ -2,14 +2,14 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
+	"strconv"
 	"vsc_nft_mgmt/sdk"
 )
 
 const (
-	maxNameLength        = 50
-	maxDescriptionLength = 500
+	maxNameLength = 100  // used by collections and nfts
+	maxDescLength = 1000 // used by collections and nfts
 )
 
 type NFTCollection struct {
@@ -31,36 +31,31 @@ func CreateNFTCollection(payload *string) *string {
 	// env := sdkInterface.GetEnv()
 	input, err := FromJSON[CreateNFTCollectionArgs](*payload)
 	abortOnError(err, "invalid collection args")
-	validationErrors := input.Validate()
-	abortOnError(validationErrors, "validation failed")
-
-	creator := getSenderAddress()
+	input.Validate()
+	env := sdk.GetEnv()
+	creator := env.Sender.Address
 	// if collectionExists(creator, input.Name) {
 	// 	abortOnError(fmt.Errorf("collection with name '%s' already exists", input.Name), "")
 	// }
 
+	collectionId := newCollectionID()
+
 	collection := NFTCollection{
-		ID:           generateUUID(),
+		ID:           strconv.Itoa(collectionId),
 		Owner:        creator,
 		Name:         input.Name,
 		Description:  input.Description,
-		CreationTxID: getTxID(),
+		CreationTxID: env.TxId,
 	}
 	savingErrors := saveNFTCollection(&collection)
-	abortOnError(savingErrors, "invalid collection args")
-
-	// sdkInterface.Log(fmt.Sprintf("CreateNFTCollection: %s", collection.ID))
-	return returnJsonResponse(
-		true, map[string]interface{}{
-			"id": collection.ID,
-		},
-	)
+	abortOnError(savingErrors, "saving failed")
+	setCollectionCount(collectionId + 1)
+	return nil
 }
 
 //go:wasmexport col_get
 func GetCollection(id *string) *string {
-	collection, err := loadNFTCollection(*id)
-	abortOnError(err, "failed to load collection")
+	collection := loadNFTCollection(*id)
 	jsonStr, err := ToJSON(collection)
 	abortOnError(err, "failed to marshal collection")
 	return &jsonStr
@@ -71,8 +66,7 @@ func GetNFTCollectionsForOwner(owner *string) *string {
 	collectionIds := GetIDsFromIndex(CollectionsOwner + *owner)
 	collections := make([]NFTCollection, 0)
 	for _, n := range collectionIds {
-		currentCollection, err := loadNFTCollection(n)
-		abortOnError(err, "loading collection failed")
+		currentCollection := loadNFTCollection(n)
 		collections = append(collections, *currentCollection)
 	}
 	jsonStr, err := ToJSON(collections)
@@ -89,39 +83,49 @@ func saveNFTCollection(collection *NFTCollection) error {
 
 	// save collection itself
 	idKey := collectionKey(collection.ID)
-	getStore().Set(idKey, string(b))
+	sdk.StateSetObject(idKey, string(b))
 	// save collection id into index for owner
 	AddIDToIndex(CollectionsOwner+collection.Owner.String(), collection.ID)
 
 	return nil
 }
 
-func loadNFTCollection(id string) (*NFTCollection, error) {
+func loadNFTCollection(id string) *NFTCollection {
 	if id == "" {
-		return nil, fmt.Errorf("ID is mandatory")
+		sdk.Abort("ID is mandatory")
 	}
 	key := collectionKey(id)
-	ptr := getStore().Get(key)
+	ptr := sdk.StateGetObject(key)
 	if ptr == nil {
-		return nil, fmt.Errorf("collection %s not found", id)
+		sdk.Abort(fmt.Sprintf("collection %s not found", id))
 	}
 	collection, err := FromJSON[NFTCollection](*ptr)
-
 	if err != nil {
-		return nil, fmt.Errorf("failed unmarshal collection %s: %v", id, err)
+		sdk.Abort(fmt.Sprintf("failed unmarshal collection %s: %v", id, err))
 	}
-	return collection, nil
+	return collection
 }
 
-func (c *CreateNFTCollectionArgs) Validate() error {
+func (c *CreateNFTCollectionArgs) Validate() {
 	if c.Name == "" {
-		return errors.New("name is mandatory")
+		sdk.Abort("name is mandatory")
 	}
 	if len(c.Name) > maxNameLength {
-		return fmt.Errorf("name: max %d chars", maxNameLength)
+		sdk.Abort(fmt.Sprintf("name: max %d chars", maxNameLength))
 	}
-	if len(c.Description) > maxDescriptionLength {
-		return fmt.Errorf("desc: max %d chars", maxDescriptionLength)
+	if len(c.Description) > maxDescLength {
+		sdk.Abort(fmt.Sprintf("desc: max %d chars", maxDescLength))
 	}
-	return nil
+}
+
+func collectionKey(collectionId string) string {
+	return fmt.Sprintf("col:%s", collectionId)
+}
+
+func newCollectionID() int {
+	return getCount(CollectionCount)
+}
+
+func setCollectionCount(nextId int) {
+	setCount(CollectionCount, nextId)
 }

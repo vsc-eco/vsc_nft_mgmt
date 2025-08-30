@@ -10,27 +10,27 @@ import (
 //go:wasmexport admin_set_market
 func SetMarketContract(address *string) *string {
 	if *address == "" {
-		abortCustom("market contract address is mandatory")
+		sdk.Abort("market address needed")
 	}
 
-	creator := getSenderAddress()
+	creator := sdk.GetEnv().Sender.Address
 	contractOwner := "contractOwnerAddress" // TODO: set vsc administrative account here
 	if creator.String() != contractOwner {
-		abortCustom(fmt.Sprintf("market only be set by %s", contractOwner))
+		sdk.Abort(fmt.Sprintf("market only be set by %s", contractOwner))
 
 	}
-	getStore().Set(adminKey("marketContract"), *address)
-	return returnJsonResponse(
-		true, map[string]interface{}{
-			"message": fmt.Sprintf("market set to %s", address),
-		},
-	)
+	sdk.StateSetObject(adminKey("marketContract"), *address)
+	return nil
 }
 
 func getMarketContract() (sdk.Address, error) {
-	contract := getStore().Get(adminKey("marketContract"))
+	contract := sdk.StateGetObject(adminKey("marketContract"))
 	if contract == nil {
 		return "", fmt.Errorf("market not set")
 	}
 	return sdk.Address(*contract), nil
+}
+
+func adminKey(keyName string) string {
+	return fmt.Sprintf("admin:%s", keyName)
 }
