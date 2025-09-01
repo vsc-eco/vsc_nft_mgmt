@@ -1,24 +1,23 @@
 package main
 
-// maintaining index keys for querying data in various ways
-
 import (
-	"encoding/json"
-	"fmt"
 	"strconv"
-	"vsc_nft_mgmt/sdk"
 )
+
+// Index functions
+// for fast and more effective reads we maintain indexes in the contract state
+// all indexes are split into chunks of X entries to avoid overflowing the max size of a key/value of the contract state
 
 // index key prefixes
 const (
-	maxChunkSize           = 2500               // all indexes are split into chunks of X entries to avoid overflowing the max size of a key/value in the contract state
-	NFTsCreator            = "nfts:creator"     // + creator			// holds nfts minted by a given user (only unique and genesis editions)
-	CollectionsOwner       = "cols:owner:"      // + owner			// holds collections for a given user (to avoid dublicate names)
-	NFTsCollection         = "nfts:col:"        // + collection		// holds nfts contained in a give collection
+	maxChunkSize           = 2500
+	NFTsCreator            = "nfts:creator"     // + creator		// holds nfts minted by a given user (only unique and genesis editions)
+	CollectionsOwner       = "cols:owner:"      // + owner			// holds collections for a given user (to avoid duplicate names)
+	NFTsCollection         = "nfts:col:"        // + collection		// holds nfts contained in a given collection
 	AllEditionsOfGenesis   = "e_all:genesis:"   // + genesisId		// holds editions for a given genesis edition
 	AvailEditionsOfGenesis = "e_avail:genesis:" // + genesisId		// holds available editions for a given genesis edition
-	NFTsCount              = "count:nfts"       // holds a int counter for nfts (to create new ids)
-	CollectionCount        = "count:col"        // holds a int counter for collections (to create new ids)
+	NFTsCount              = "count:nfts"       // 					// holds a int counter for nfts (to create new ids)
+	CollectionCount        = "count:col"        // 					// holds a int counter for collections (to create new ids)
 )
 
 // stores number of chunks for a base index
@@ -31,8 +30,8 @@ func chunkKey(base string, chunk int) string {
 }
 
 // get number of chunks for an index
-func getChunkCount(baseKey string) int {
-	ptr := sdk.StateGetObject(chunkCounterKey(baseKey))
+func getChunkCount(baseKey string, chain SDKInterface) int {
+	ptr := chain.StateGetObject(chunkCounterKey(baseKey))
 	if ptr == nil || *ptr == "" {
 		return 0
 	}
@@ -41,82 +40,73 @@ func getChunkCount(baseKey string) int {
 }
 
 // set number of chunks
-func setChunkCount(baseKey string, n int) {
-	sdk.StateSetObject(chunkCounterKey(baseKey), strconv.Itoa(n))
+func setChunkCount(baseKey string, n int, chain SDKInterface) {
+	chain.StateSetObject(chunkCounterKey(baseKey), strconv.Itoa(n))
 }
 
-func getCount(key string) int {
-	ptr := sdk.StateGetObject(key)
+func getCount(key string, chain SDKInterface) int64 {
+	ptr := chain.StateGetObject(key)
 	if ptr == nil || *ptr == "" {
 		return 0
 	}
-	n, _ := strconv.Atoi(*ptr)
+	n, _ := strconv.ParseInt(*ptr, 10, 64)
 	return n
 }
 
-func setCount(key string, n int) {
-	sdk.StateSetObject(key, strconv.Itoa(n))
+func setCount(key string, n int64, chain SDKInterface) {
+	chain.StateSetObject(key, strconv.FormatInt(n, 10))
 }
 
-// AddIDToIndex ensures id exists across all chunks (no duplicates).
-func AddIDToIndex(baseKey string, id string) {
-	chunks := getChunkCount(baseKey)
+// ensures id exists across all chunks (no duplicates).
+func AddIDToIndex(baseKey string, id string, chain SDKInterface) {
+	chunks := getChunkCount(baseKey, chain)
+
 	// search existing chunks for duplicates or free space
 	for i := 0; i < chunks; i++ {
 		key := chunkKey(baseKey, i)
-		ptr := sdk.StateGetObject(key)
-		var ids []string
-		if ptr != nil && *ptr != "" {
-			if err := json.Unmarshal([]byte(*ptr), &ids); err != nil {
-				sdk.Abort(fmt.Sprintf("unmarshal index %s: %w", key, err))
+		ptr := chain.StateGetObject(key)
 
-			}
+		ids := []string{}
+		if ptr != nil && *ptr != "" {
+			ids = *FromJSON[[]string](*ptr, "index "+key)
+
 			// duplicate check
 			for _, e := range ids {
 				if e == id {
 					return // already present
 				}
 			}
+
 			// append if space
 			if len(ids) < maxChunkSize {
 				ids = append(ids, id)
-				b, err := json.Marshal(ids)
-				if err != nil {
-					sdk.Abort(fmt.Sprintf("marshal index %s: %w", key, err))
-				}
-				sdk.StateSetObject(key, string(b))
+				chain.StateSetObject(key, ToJSON(ids, "index "+key))
 				return
 			}
 		}
 	}
+
 	// not found / no space -> create new chunk
 	key := chunkKey(baseKey, chunks)
 	ids := []string{id}
-	b, err := json.Marshal(ids)
-	if err != nil {
-		sdk.Abort(fmt.Sprintf("marshal index %s: %w", key, err))
-	}
-	sdk.StateSetObject(key, string(b))
-	setChunkCount(baseKey, chunks+1)
-	return
+	chain.StateSetObject(key, ToJSON(ids, "index "+key))
+	setChunkCount(baseKey, chunks+1, chain)
 }
 
-// RemoveIDFromIndex removes id from whichever chunk it’s in.
-func RemoveIDFromIndex(baseKey string, id string) {
-	chunks := getChunkCount(baseKey)
+// removes id from whichever chunk it’s in.
+func RemoveIDFromIndex(baseKey string, id string, chain SDKInterface) {
+	chunks := getChunkCount(baseKey, chain)
 	for i := 0; i < chunks; i++ {
 		key := chunkKey(baseKey, i)
-		ptr := sdk.StateGetObject(key)
+		ptr := chain.StateGetObject(key)
 		if ptr == nil || *ptr == "" {
 			continue
 		}
-		var ids []string
-		if err := json.Unmarshal([]byte(*ptr), &ids); err != nil {
-			sdk.Abort(fmt.Sprintf("unmarshal index %s: %w", key, err))
 
-		}
+		ids := *FromJSON[[]string](*ptr, "index "+key)
 		newIds := ids[:0]
 		found := false
+
 		for _, e := range ids {
 			if e == id {
 				found = true
@@ -124,52 +114,42 @@ func RemoveIDFromIndex(baseKey string, id string) {
 			}
 			newIds = append(newIds, e)
 		}
-		if found {
-			// save updated chunk
-			b, err := json.Marshal(newIds)
-			if err != nil {
-				sdk.Abort(fmt.Sprintf("marshal index %s: %w", key, err))
-			}
-			sdk.StateSetObject(key, string(b))
 
+		if found {
+			chain.StateSetObject(key, ToJSON(newIds, "index "+key))
 		}
 	}
-
 }
 
-// GetIDsFromIndex collects all IDs across all chunks.
-func GetIDsFromIndex(baseKey string) []string {
+// collects all IDs across all chunks.
+func GetIDsFromIndex(baseKey string, chain SDKInterface) []string {
 	all := []string{}
-	chunks := getChunkCount(baseKey)
+	chunks := getChunkCount(baseKey, chain)
+
 	for i := 0; i < chunks; i++ {
 		key := chunkKey(baseKey, i)
-		ptr := sdk.StateGetObject(key)
+		ptr := chain.StateGetObject(key)
 		if ptr == nil || *ptr == "" {
 			continue
 		}
-		var ids []string
-		if err := json.Unmarshal([]byte(*ptr), &ids); err != nil {
-			sdk.Abort(fmt.Sprintf("unmarshal index %s: %w", key, err))
-			return nil // will not happen because of error
-		}
+
+		ids := *FromJSON[[]string](*ptr, "index "+key)
 		all = append(all, ids...)
 	}
 	return all
 }
 
-// GetOneIDFromIndex checks all chunks for a specific id.
-func GetOneIDFromIndex(baseKey string, id string) (string, error) {
-	chunks := getChunkCount(baseKey)
+// checks all chunks for a specific id.
+func GetOneIDFromIndex(baseKey string, id string, chain SDKInterface) (string, error) {
+	chunks := getChunkCount(baseKey, chain)
 	for i := 0; i < chunks; i++ {
 		key := chunkKey(baseKey, i)
-		ptr := sdk.StateGetObject(key)
+		ptr := chain.StateGetObject(key)
 		if ptr == nil || *ptr == "" {
 			continue
 		}
-		var ids []string
-		if err := json.Unmarshal([]byte(*ptr), &ids); err != nil {
-			return "", fmt.Errorf("unmarshal index %s: %w", key, err)
-		}
+
+		ids := *FromJSON[[]string](*ptr, "index "+key)
 		for _, v := range ids {
 			if v == id {
 				return id, nil
@@ -177,14 +157,4 @@ func GetOneIDFromIndex(baseKey string, id string) (string, error) {
 		}
 	}
 	return "", nil
-}
-
-// updateBoolIndex ensures the objectId is in the correct boolean index chunk
-func updateBoolIndex(baseKey string, objectId string, targetBool bool) {
-	// remove from the opposite boolean index
-	oppositeKey := baseKey + strconv.FormatBool(!targetBool)
-	RemoveIDFromIndex(oppositeKey, objectId)
-	// add to the correct boolean index
-	correctKey := baseKey + strconv.FormatBool(targetBool)
-	AddIDToIndex(correctKey, objectId)
 }

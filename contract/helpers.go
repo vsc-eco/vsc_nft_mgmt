@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"strings"
 	"vsc_nft_mgmt/sdk"
 )
@@ -24,10 +23,4 @@ func FromJSON[T any](data string, objectType string) *T {
 		sdk.Abort("failed to unmarshal " + objectType)
 	}
 	return &v
-}
-
-func abortOnError(err error, message string) {
-	if err != nil {
-		sdk.Abort(fmt.Sprintf("%s: %v", message, err))
-	}
 }
