@@ -205,7 +205,6 @@ func TestTransferNFT_Positive(t *testing.T) {
 		Collection: receiverCollectionId,
 		Owner:      receiverAddress,
 	}
-	// TODO: check if new owner has the collection
 	transferPayload := mustJSON(t, transferArgs)
 	transferNFTImpl(&transferPayload, f)
 

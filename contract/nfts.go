@@ -184,8 +184,6 @@ func transferNFTImpl(payload *string, chain SDKInterface) *string {
 	caller := chain.GetEnv().Caller // caller instead of sender to enable other contracts
 	marketContract := getMarketContract(chain)
 
-	loadCollection(input.Collection, chain)
-
 	// if the nft should move from one user to another
 	if input.Owner != nft.Owner {
 		if caller != marketContract && caller != nft.Owner {
@@ -200,6 +198,11 @@ func transferNFTImpl(payload *string, chain SDKInterface) *string {
 		if caller != nft.Owner {
 			chain.Abort("only owner can move")
 		}
+	}
+	// check if the target owner owns the target collection
+	collection := loadCollection(input.Collection, chain)
+	if collection.Owner != input.Owner {
+		chain.Abort("collection not owned by new owner")
 	}
 
 	originalCollection := nft.Collection
