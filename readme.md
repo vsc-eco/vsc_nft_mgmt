@@ -5,14 +5,12 @@ This repository contains a **smart contract written in Go** for the
 The contract is designed to integrate seamlessly with the vsc-ecosystem,
 enabling various nft related functionalities.
 
-------------------------------------------------------------------------
 
 ## 📖 Overview
 
 -   **Language:** Go (Golang) 1.23.2+
 -   **Purpose:** Provides basic functions to create collections and minting nfts
 
-------------------------------------------------------------------------
 
 ## 📖 Schema
 
@@ -29,9 +27,78 @@ Each Adress can have multiple collections. In each collection can be included mu
 - Collection (Id 124)
     - ...
     - 
-------------------------------------------------------------------------
+
+
+## 📂 Project Structure
+
+    ./vsc_nft_mgmt
+    ├── artifacts/  //Contains 
+    ├── contract/
+    │   └── admin.go // administrative functions
+    │   └── collections.go // functions for creating and getting collections
+    │   └── helpers.go // various handy functions
+    │   └── indexing.go // features to maintaining multiple indexes for faster reads of contract state data
+    │   └── main.go // placeholder
+    │   └── mock_collection_test.go // unit tests all about *collections.go*
+    │   └── mock_nft_tests.go // unit tests all about *nfts.go*
+    │   └── nfts.go // functions related to nfts like minting, transferring and various getters
+    │   └── sdkInterface.go // an interface for enabling the developer to do unit tests without production environment
+    ├── runtime/
+    │   └── gc_leaking_exported.go
+    │   └── mock_placeholder.go // dummy for building mock version
+    ├── sdk/ //SDK implementation. Do NOT modify
+    │   └── address.go
+    │   └── asset.go
+    │   └── env.go        
+    │   └── sdk_mock.go // sdk definition to enable local unit tests  
+    │   └── sdk.go    
+    ├── go.mod
+    ├── readme.md
+
+
+## ⚙️ Requirements
+
+-   [Go](https://golang.org/dl/) **1.23.2+**
+-   [TinyGo](https://tinygo.org/getting-started/install/)
+-   [Wasm Edge](https://wasmedge.org/docs/start/install/)
+-   [Wasm Tools](https://github.com/bytecodealliance/wasm-tools)
+
+
+## 🚀 Build & Deploy
+
+For instructions related to building and deploying see the [official docs - TODO add link](link).
+
+
+## ✅ Testing
+
+There are unit tests defined for all the important exported function implementations:
+
+``` bash
+cd contract
+go test -tags=test -v
+```
+You should see a PASS at the end. If not there is at least one unit tests that failed:
+```
+...
+--- PASS: TestGetAvailableEditionsForNFT_Dynamic (0.00s)
+=== RUN   TestGetAvailableEditionsForNFT_Negative
+--- PASS: TestGetAvailableEditionsForNFT_Negative (0.00s)
+PASS
+ok      vsc_nft_mgmt/contract   0.003s
+
+```
+
 
 ## 📖 Exported Functions
+
+Below you can find all exported and usable functions for this smart contract including example payloads.
+**Warning:** These payloads contain comments which is invalid for json. Make sure tho remove the comments if you copy&paste payloads to test the contract.
+
+You can use the [Hive Keychain SDK Playground](https://play.hive-keychain.com/#/request/custom) for testing these L1 transactions.
+Username: `your Hive username`
+Id: `vsc.call`
+Method: `Active`
+Json: `below payloads`
 
 ### Mutations
 
@@ -39,7 +106,7 @@ Each Adress can have multiple collections. In each collection can be included mu
 action: `col_create`
 Creates a collection for the sending address. 
 payload: 
-```json
+```json5
 {
     "name": "Trasure Chest", // mandatory: name of the collection
     "description": "All my NFTs" // optional: description of the collection
@@ -52,7 +119,7 @@ payload:
 action: `nft_mint_unique`
 Creates a **unique** NFT.
 
-```json
+```json5
 {
   "col": "123", // mandatory: target collection ID
   "name": "Golden Sword", // mandatory: name of the NFT
@@ -69,7 +136,7 @@ Creates a **unique** NFT.
 #### Mint Editioned NFT
 action: `nft_mint_edition`
 Creates **editions** of NFTs.
-```json
+```json5
 {
   "col": "123", // mandatory: target collection ID
   "name": "Silver Shield", // mandatory: name of the NFT
@@ -85,8 +152,8 @@ Creates **editions** of NFTs.
 
 #### Transfer NFT
 action: `nft_transfer`
-Tranfers an **NFT** (edition or unique) to a new collection or a new owner.
-```json
+Tranfers an **NFT** (edition or unique) to a new collection or a new owner. Only the owner or a administrative defined market contract can move an nft to a new owner. Only owners can move the an NFT to another owned collection.
+```json5
 {
   "id": "42", // mandatory: NFT ID (string-form ID used in state keys)
   "col": "123", // mandatory: destination collection ID (can be same as current)
@@ -94,7 +161,10 @@ Tranfers an **NFT** (edition or unique) to a new collection or a new owner.
 }
 ```
 
-### Queries (Getters for other Contracts)
+### Queries
+The following exported functions return json and are meant to be used by other contracts like the market contract for example. Reading data from a contract state outside of the smart contract environment is more cost-effective and faster by utilizing the vsc API. (TODO: add link to doc part about reading key/value from contract state)
+
+
 #### Collections
 ##### Get One Collection
 Returns a collection.
@@ -124,85 +194,17 @@ payload: `hive:tibfox` <= mandatory: creator address
 ##### Get Editions for an NFT
 Returns all Editions for a given NFT
 action: `nft_get_editions`
-payload `42` <= mandatory: genesis NFT ID 
+payload `42` <= mandatory: genesis NFT ID
 ##### Get Available Editions for an NFT
 Returns all Editions for a given NFT that are still owned by the minting address.
 action: `nft_get_available`
 payload: `42` <= mandatory: genesis NFT ID
-
-------------------------------------------------------------------------
-
-## 📂 Project Structure
-
-    ./vsc_nft_mgmt
-    ├── artifacts/  //Contains 
-    ├── contract/
-    │   └── admin.go // administrative functions
-    │   └── collections.go // functions for creating and getting collections
-    │   └── helpers.go // various handy functions
-    │   └── indexing.go // features to maintaining multiple indexes for faster reads of contract state data
-    │   └── main.go // placeholder
-    │   └── mock_collection_test.go // unit tests all about *collections.go*
-    │   └── mock_nft_tests.go // unit tests all about *nfts.go*
-    │   └── nfts.go // functions related to nfts like minting, transferring and various getters
-    │   └── sdkInterface.go // an interface for enabling the developer to do unit tests without production environment
-    ├── runtime/
-    │   └── gc_leaking_exported.go
-    │   └── mock_placeholder.go // dummy for building mock version
-    ├── sdk/ //SDK implementation. Do NOT modify
-    │   └── address.go
-    │   └── asset.go
-    │   └── env.go        
-    │   └── sdk_mock.go // sdk definition to enable local unit tests  
-    │   └── sdk.go    
-    ├── go.mod
-    ├── readme.md
-
-------------------------------------------------------------------------
-
-## ⚙️ Requirements
-
--   [Go](https://golang.org/dl/) **1.23.2+**
--   [TinyGo](https://tinygo.org/getting-started/install/)
--   [Wasm Edge](https://wasmedge.org/docs/start/install/)
--   [Wasm Tools](https://github.com/bytecodealliance/wasm-tools)
-
-------------------------------------------------------------------------
-
-## 🚀 Installation
-
-For instructions related to building and deploying see the [official docs - TODO add link](link).
-
-
-------------------------------------------------------------------------
-
-## ✅ Testing
-
-There are unit tests defined for all the important exported function implementations:
-
-``` bash
-cd contract
-go test -tags=test -v
-```
-You should see a PASS at the end. If not there is at least one unit tests that failed:
-```
-...
---- PASS: TestGetAvailableEditionsForNFT_Dynamic (0.00s)
-=== RUN   TestGetAvailableEditionsForNFT_Negative
---- PASS: TestGetAvailableEditionsForNFT_Negative (0.00s)
-PASS
-ok      vsc_nft_mgmt/contract   0.003s
-
-```
-
-------------------------------------------------------------------------
 
 ## 📚 Documentation
 
 -   [Go-VSC-Node](https://github.com/vsc-eco/go-vsc-node)
 -   [Go-Contract-Template](https://github.com/vsc-eco/go-contract-template)
 
-------------------------------------------------------------------------
 
 ## 📜 License
 
