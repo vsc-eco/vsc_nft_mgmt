@@ -168,37 +168,55 @@ The following exported functions return json and are meant to be used by other c
 #### Collections
 ##### Get One Collection
 Returns a collection.
-action: `col_get`
-payload: `123` <= mandatory: Collection ID
+| action | payload  | payload description |
+| ------ | -------- | ------------------- |
+| col_get     | 123     | mandatory: Collection ID     |
+
+
 ##### Get Collections For Address
 Returns all collections for a give address.
-action: `col_get_user`
-payload: "0xABCDEF1234567890" <= mandatory: owner address
+| action | payload  | payload description |
+| ------ | -------- | ------------------- |
+| col_get_user | hive:tibfox | mandatory: owner address |
+
 #### NFTs
 ##### Get One NFT
 Returns an NFT
-action: `nft_get`
-payload: `42` <= mandatory: NFT ID
-##### Get NFTs for Collection
-Returns a list of NFTs within a collection.
-action: `nft_get_collection`
-payload: `123` <= mandatory: collection ID
-##### Get NFTs for Owner
-Returns all NFTs owned by a specified address.
-action: `nft_get_owner`
-payload: `hive:tibfox` <= mandatory: owner address
-##### Get NFTs minted by Adress
-Returns all NFTs minted by a specified address.
-action: `nft_get_creator`
-payload: `hive:tibfox` <= mandatory: creator address
+| action | payload  | payload description |
+| ------ | -------- | ------------------- |
+| nft_get | 42 | mandatory: NFT ID |
+
 ##### Get Editions for an NFT
 Returns all Editions for a given NFT
-action: `nft_get_editions`
-payload `42` <= mandatory: genesis NFT ID
+| action | payload  | payload description |
+| ------ | -------- | ------------------- |
+| nft_get_editions | 42 | mandatory: genesis NFT ID |
+
 ##### Get Available Editions for an NFT
 Returns all Editions for a given NFT that are still owned by the minting address.
-action: `nft_get_available`
-payload: `42` <= mandatory: genesis NFT ID
+| action | payload  | payload description |
+| ------ | -------- | ------------------- |
+| nft_get_available | 42 | mandatory: genesis NFT ID |
+
+##### Get NFTs for Collection
+Returns a list of NFTs within a collection.
+| action | payload  | payload description |
+| ------ | -------- | ------------------- |
+| nft_get_collection | 123 | mandatory: collection ID |
+
+##### Get NFTs for Owner
+Returns all NFTs owned by a specified address.
+| action | payload  | payload description |
+| ------ | -------- | ------------------- |
+| nft_get_owner | hive:tibfox | mandatory: owner address |
+
+##### Get NFTs minted by Adress
+Returns all NFTs minted by a specified address.
+| action | payload  | payload description |
+| ------ | -------- | ------------------- |
+| nft_get_creator | hive:tibfox | mandatory: creator address |
+
+
 
 ## 📚 Documentation
 
