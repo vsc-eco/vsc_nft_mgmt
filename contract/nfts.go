@@ -196,7 +196,7 @@ func GetNFT(id *string) *string {
 // returns a list of all nfts within a give collection id
 //
 //go:wasmexport nft_get_collection
-func getNFTsForCollection(collectionId *string) *string {
+func GetNFTsForCollection(collectionId *string) *string {
 	// get all NFTs in a collection
 	nftIds := GetIDsFromIndex(NFTsCollection + *collectionId)
 	jsonStr := getNFTsByIds(nftIds, false)
