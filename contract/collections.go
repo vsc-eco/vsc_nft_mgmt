@@ -30,31 +30,17 @@ type CreateCollectionArgs struct {
 
 //go:wasmexport col_create
 func CreateCollection(payload *string) *string {
-	return createCollectionImpl(payload, RealSDK{})
-}
-
-//go:wasmexport col_get
-func GetCollection(id *string) *string {
-	return getCollectionImpl(id, RealSDK{})
-}
-
-//go:wasmexport col_get_user
-func GetCollectionsForOwner(owner *string) *string {
-	return getCollectionsForOwnerImpl(owner, RealSDK{})
-}
-
-func createCollectionImpl(payload *string, chain SDKInterface) *string {
 	// env := sdkInterface.GetEnv()
 	input := FromJSON[CreateCollectionArgs](*payload, "collection args")
 
-	input.Validate(chain)
-	env := chain.GetEnv()
+	input.Validate()
+	env := sdk.GetEnv()
 	creator := env.Sender.Address
 	// if collectionExists(creator, input.Name) {
 	// 	abortOnError(fmt.Errorf("collection with name '%s' already exists", input.Name), "")
 	// }
 
-	collectionId := newCollectionID(chain)
+	collectionId := newCollectionID()
 
 	collection := Collection{
 		ID: strconv.FormatInt(collectionId, 10),
@@ -64,22 +50,24 @@ func createCollectionImpl(payload *string, chain SDKInterface) *string {
 		Description:  input.Description,
 		CreationTxID: env.TxId,
 	}
-	saveCollection(&collection, chain)
-	setCollectionCount(collectionId+int64(1), chain)
+	saveCollection(&collection)
+	setCollectionCount(collectionId + int64(1))
 	return nil
 }
 
-func getCollectionImpl(id *string, chain SDKInterface) *string {
-	collection := loadCollection(*id, chain)
+//go:wasmexport col_get
+func GetCollection(id *string) *string {
+	collection := loadCollection(*id)
 	jsonStr := ToJSON(collection, "collection")
 	return &jsonStr
 }
 
-func getCollectionsForOwnerImpl(owner *string, chain SDKInterface) *string {
-	collectionIds := GetIDsFromIndex(CollectionsOwner+*owner, chain)
+//go:wasmexport col_get_user
+func GetCollectionsForOwner(owner *string) *string {
+	collectionIds := GetIDsFromIndex(CollectionsOwner + *owner)
 	collections := make([]Collection, 0)
 	for _, n := range collectionIds {
-		currentCollection := loadCollection(n, chain)
+		currentCollection := loadCollection(n)
 		collections = append(collections, *currentCollection)
 	}
 	jsonStr := ToJSON(collections, "collections")
@@ -87,43 +75,43 @@ func getCollectionsForOwnerImpl(owner *string, chain SDKInterface) *string {
 }
 
 // Contract State Persistence
-func saveCollection(collection *Collection, chain SDKInterface) error {
+func saveCollection(collection *Collection) error {
 	b, err := json.Marshal(collection)
 	if err != nil {
-		chain.Abort("failed to marshal collection")
+		sdk.Abort("failed to marshal collection")
 	}
 
 	// save collection itself
 	idKey := collectionKey(collection.ID)
-	chain.StateSetObject(idKey, string(b))
+	sdk.StateSetObject(idKey, string(b))
 	// save collection id into index for owner
-	AddIDToIndex(CollectionsOwner+collection.Owner.String(), collection.ID, chain)
+	AddIDToIndex(CollectionsOwner+collection.Owner.String(), collection.ID)
 
 	return nil
 }
 
-func loadCollection(id string, chain SDKInterface) *Collection {
+func loadCollection(id string) *Collection {
 	if id == "" {
-		chain.Abort("ID is mandatory")
+		sdk.Abort("ID is mandatory")
 	}
 	key := collectionKey(id)
-	ptr := chain.StateGetObject(key)
+	ptr := sdk.StateGetObject(key)
 	if ptr == nil {
-		chain.Abort(fmt.Sprintf("collection %s not found", id))
+		sdk.Abort(fmt.Sprintf("collection %s not found", id))
 	}
 	collection := FromJSON[Collection](*ptr, "collection")
 	return collection
 }
 
-func (c *CreateCollectionArgs) Validate(chain SDKInterface) {
+func (c *CreateCollectionArgs) Validate() {
 	if c.Name == "" {
-		chain.Abort("name is mandatory")
+		sdk.Abort("name is mandatory")
 	}
 	if len(c.Name) > maxNameLength {
-		chain.Abort(fmt.Sprintf("name: max %d chars", maxNameLength))
+		sdk.Abort(fmt.Sprintf("name: max %d chars", maxNameLength))
 	}
 	if len(c.Description) > maxDescLength {
-		chain.Abort(fmt.Sprintf("desc: max %d chars", maxDescLength))
+		sdk.Abort(fmt.Sprintf("desc: max %d chars", maxDescLength))
 	}
 }
 
@@ -131,10 +119,10 @@ func collectionKey(collectionId string) string {
 	return fmt.Sprintf("col:%s", collectionId)
 }
 
-func newCollectionID(chain SDKInterface) int64 {
-	return getCount(CollectionCount, chain)
+func newCollectionID() int64 {
+	return getCount(CollectionCount)
 }
 
-func setCollectionCount(nextId int64, chain SDKInterface) {
-	setCount(CollectionCount, nextId, chain)
+func setCollectionCount(nextId int64) {
+	setCount(CollectionCount, nextId)
 }

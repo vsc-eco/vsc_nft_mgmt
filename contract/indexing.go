@@ -2,6 +2,7 @@ package main
 
 import (
 	"strconv"
+	"vsc_nft_mgmt/sdk"
 )
 
 // Index functions
@@ -30,8 +31,8 @@ func chunkKey(base string, chunk int) string {
 }
 
 // get number of chunks for an index
-func getChunkCount(baseKey string, chain SDKInterface) int {
-	ptr := chain.StateGetObject(chunkCounterKey(baseKey))
+func getChunkCount(baseKey string) int {
+	ptr := sdk.StateGetObject(chunkCounterKey(baseKey))
 	if ptr == nil || *ptr == "" {
 		return 0
 	}
@@ -40,12 +41,12 @@ func getChunkCount(baseKey string, chain SDKInterface) int {
 }
 
 // set number of chunks
-func setChunkCount(baseKey string, n int, chain SDKInterface) {
-	chain.StateSetObject(chunkCounterKey(baseKey), strconv.Itoa(n))
+func setChunkCount(baseKey string, n int) {
+	sdk.StateSetObject(chunkCounterKey(baseKey), strconv.Itoa(n))
 }
 
-func getCount(key string, chain SDKInterface) int64 {
-	ptr := chain.StateGetObject(key)
+func getCount(key string) int64 {
+	ptr := sdk.StateGetObject(key)
 	if ptr == nil || *ptr == "" {
 		return 0
 	}
@@ -53,18 +54,18 @@ func getCount(key string, chain SDKInterface) int64 {
 	return n
 }
 
-func setCount(key string, n int64, chain SDKInterface) {
-	chain.StateSetObject(key, strconv.FormatInt(n, 10))
+func setCount(key string, n int64) {
+	sdk.StateSetObject(key, strconv.FormatInt(n, 10))
 }
 
 // ensures id exists across all chunks (no duplicates).
-func AddIDToIndex(baseKey string, id string, chain SDKInterface) {
-	chunks := getChunkCount(baseKey, chain)
+func AddIDToIndex(baseKey string, id string) {
+	chunks := getChunkCount(baseKey)
 
 	// search existing chunks for duplicates or free space
 	for i := 0; i < chunks; i++ {
 		key := chunkKey(baseKey, i)
-		ptr := chain.StateGetObject(key)
+		ptr := sdk.StateGetObject(key)
 
 		ids := []string{}
 		if ptr != nil && *ptr != "" {
@@ -80,7 +81,7 @@ func AddIDToIndex(baseKey string, id string, chain SDKInterface) {
 			// append if space
 			if len(ids) < maxChunkSize {
 				ids = append(ids, id)
-				chain.StateSetObject(key, ToJSON(ids, "index "+key))
+				sdk.StateSetObject(key, ToJSON(ids, "index "+key))
 				return
 			}
 		}
@@ -89,16 +90,16 @@ func AddIDToIndex(baseKey string, id string, chain SDKInterface) {
 	// not found / no space -> create new chunk
 	key := chunkKey(baseKey, chunks)
 	ids := []string{id}
-	chain.StateSetObject(key, ToJSON(ids, "index "+key))
-	setChunkCount(baseKey, chunks+1, chain)
+	sdk.StateSetObject(key, ToJSON(ids, "index "+key))
+	setChunkCount(baseKey, chunks+1)
 }
 
 // removes id from whichever chunk it’s in.
-func RemoveIDFromIndex(baseKey string, id string, chain SDKInterface) {
-	chunks := getChunkCount(baseKey, chain)
+func RemoveIDFromIndex(baseKey string, id string) {
+	chunks := getChunkCount(baseKey)
 	for i := 0; i < chunks; i++ {
 		key := chunkKey(baseKey, i)
-		ptr := chain.StateGetObject(key)
+		ptr := sdk.StateGetObject(key)
 		if ptr == nil || *ptr == "" {
 			continue
 		}
@@ -116,19 +117,19 @@ func RemoveIDFromIndex(baseKey string, id string, chain SDKInterface) {
 		}
 
 		if found {
-			chain.StateSetObject(key, ToJSON(newIds, "index "+key))
+			sdk.StateSetObject(key, ToJSON(newIds, "index "+key))
 		}
 	}
 }
 
 // collects all IDs across all chunks.
-func GetIDsFromIndex(baseKey string, chain SDKInterface) []string {
+func GetIDsFromIndex(baseKey string) []string {
 	all := []string{}
-	chunks := getChunkCount(baseKey, chain)
+	chunks := getChunkCount(baseKey)
 
 	for i := 0; i < chunks; i++ {
 		key := chunkKey(baseKey, i)
-		ptr := chain.StateGetObject(key)
+		ptr := sdk.StateGetObject(key)
 		if ptr == nil || *ptr == "" {
 			continue
 		}
@@ -140,11 +141,11 @@ func GetIDsFromIndex(baseKey string, chain SDKInterface) []string {
 }
 
 // checks all chunks for a specific id.
-func GetOneIDFromIndex(baseKey string, id string, chain SDKInterface) (string, error) {
-	chunks := getChunkCount(baseKey, chain)
+func GetOneIDFromIndex(baseKey string, id string) (string, error) {
+	chunks := getChunkCount(baseKey)
 	for i := 0; i < chunks; i++ {
 		key := chunkKey(baseKey, i)
-		ptr := chain.StateGetObject(key)
+		ptr := sdk.StateGetObject(key)
 		if ptr == nil || *ptr == "" {
 			continue
 		}

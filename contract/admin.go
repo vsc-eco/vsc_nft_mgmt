@@ -12,23 +12,19 @@ var ContractCreator = "hive:tibfox.vsc" // TODO: set contract owner here
 
 //go:wasmexport admin_set_market
 func SetMarketContract(address *string) *string {
-	return setMarketContractImpl(address, RealSDK{})
-}
-
-func setMarketContractImpl(address *string, chain SDKInterface) *string {
 	if *address == "" {
-		chain.Abort("market address needed")
+		sdk.Abort("market address needed")
 	}
-	creator := chain.GetEnv().Sender.Address
+	creator := sdk.GetEnv().Sender.Address
 	if creator.String() != ContractCreator {
-		chain.Abort(fmt.Sprintf("market only be set by %s", ContractCreator))
+		sdk.Abort(fmt.Sprintf("market only be set by %s", ContractCreator))
 	}
-	chain.StateSetObject(adminKey("marketContract"), *address)
+	sdk.StateSetObject(adminKey("marketContract"), *address)
 	return nil
 }
 
-func getMarketContract(chain SDKInterface) sdk.Address {
-	contract := chain.StateGetObject(adminKey("marketContract"))
+func getMarketContract() sdk.Address {
+	contract := sdk.StateGetObject(adminKey("marketContract"))
 	if contract == nil {
 		return sdk.Address("")
 	}
