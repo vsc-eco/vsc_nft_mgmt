@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	nftVersion         = 1   // for poentailly upcoming versioning of the nft contract
+	nftVersion         = 1   // for a possible versioning of the nft contract
 	maxMetaKeys        = 25  // maximum count of metadata keys for an nft
 	maxMetaKeyLength   = 50  // maaximum length of a key within the metadata
 	maxMetaValueLength = 512 // maximum length of a value within the metadata
@@ -401,7 +401,7 @@ func createAndSaveNFT(
 	if err != nil {
 		sdk.Abort("failed to convert nftId back to int")
 	}
-	setNFTCount(intId + 1)
+	setCount(NFTsCount, intId+1)
 	return nft
 }
 
@@ -411,8 +411,4 @@ func nftKey(nftId string) string {
 
 func newNFTID() int64 {
 	return getCount(NFTsCount)
-}
-
-func setNFTCount(nextId int64) {
-	setCount(NFTsCount, nextId)
 }

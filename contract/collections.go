@@ -26,8 +26,6 @@ type CreateCollectionArgs struct {
 	Description string `json:"desc"` // optional: description of the collection
 }
 
-// --- Wasm exports (unchanged signatures) ---
-
 //go:wasmexport col_create
 func CreateCollection(payload *string) *string {
 	// env := sdkInterface.GetEnv()
@@ -36,10 +34,6 @@ func CreateCollection(payload *string) *string {
 	input.Validate()
 	env := sdk.GetEnv()
 	creator := env.Sender.Address
-	// if collectionExists(creator, input.Name) {
-	// 	abortOnError(fmt.Errorf("collection with name '%s' already exists", input.Name), "")
-	// }
-
 	collectionId := newCollectionID()
 
 	collection := Collection{
@@ -51,7 +45,7 @@ func CreateCollection(payload *string) *string {
 		CreationTxID: env.TxId,
 	}
 	saveCollection(&collection)
-	setCollectionCount(collectionId + int64(1))
+	setCount(CollectionCount, collectionId+int64(1))
 	return nil
 }
 
@@ -121,8 +115,4 @@ func collectionKey(collectionId string) string {
 
 func newCollectionID() int64 {
 	return getCount(CollectionCount)
-}
-
-func setCollectionCount(nextId int64) {
-	setCount(CollectionCount, nextId)
 }
