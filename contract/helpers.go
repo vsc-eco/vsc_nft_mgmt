@@ -2,6 +2,8 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
+	"strconv"
 	"strings"
 	"vsc_nft_mgmt/sdk"
 )
@@ -23,4 +25,19 @@ func FromJSON[T any](data string, objectType string) *T {
 		sdk.Abort("failed to unmarshal " + objectType)
 	}
 	return &v
+}
+
+func StringToUInt64(ptr *string) uint64 {
+	if ptr == nil {
+		sdk.Abort("input is empty")
+	}
+	val, err := strconv.ParseUint(*ptr, 10, 64) // base 10, 64-bit
+	if err != nil {
+		sdk.Abort(fmt.Sprintf("failed to parse '%s' to uint64: %w", *ptr, err))
+	}
+	return val
+}
+
+func UInt64ToString(val uint64) string {
+	return strconv.FormatUint(val, 10)
 }

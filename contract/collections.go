@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"strconv"
 	"vsc_nft_mgmt/sdk"
 )
 
@@ -13,7 +12,7 @@ const (
 )
 
 type Collection struct {
-	ID           string      `json:"id"`
+	ID           uint64      `json:"id"`
 	Name         string      `json:"name"`
 	Description  string      `json:"desc"`
 	Owner        sdk.Address `json:"owner"`
@@ -33,25 +32,23 @@ func CreateCollection(payload *string) *string {
 
 	input.Validate()
 	env := sdk.GetEnv()
-	creator := env.Sender.Address
+	creator := sdk.GetEnvKey("msg.sender")
 	collectionId := newCollectionID()
 
 	collection := Collection{
-		ID: strconv.FormatInt(collectionId, 10),
-
-		Owner:        creator,
+		ID:           collectionId,
+		Owner:        sdk.Address(*creator),
 		Name:         input.Name,
 		Description:  input.Description,
 		CreationTxID: env.TxId,
 	}
 	saveCollection(&collection)
-	setCount(CollectionCount, collectionId+int64(1))
 	return nil
 }
 
 //go:wasmexport col_get
 func GetCollection(id *string) *string {
-	collection := loadCollection(*id)
+	collection := loadCollection(StringToUInt64(id))
 	jsonStr := ToJSON(collection, "collection")
 	return &jsonStr
 }
@@ -80,18 +77,16 @@ func saveCollection(collection *Collection) error {
 	sdk.StateSetObject(idKey, string(b))
 	// save collection id into index for owner
 	AddIDToIndex(CollectionsOwner+collection.Owner.String(), collection.ID)
-
+	// increase global collection counter
+	setCount(CollectionCount, collection.ID+uint64(1))
 	return nil
 }
 
-func loadCollection(id string) *Collection {
-	if id == "" {
-		sdk.Abort("ID is mandatory")
-	}
+func loadCollection(id uint64) *Collection {
 	key := collectionKey(id)
 	ptr := sdk.StateGetObject(key)
 	if ptr == nil {
-		sdk.Abort(fmt.Sprintf("collection %s not found", id))
+		sdk.Abort(fmt.Sprintf("collection %d not found", id))
 	}
 	collection := FromJSON[Collection](*ptr, "collection")
 	return collection
@@ -109,10 +104,10 @@ func (c *CreateCollectionArgs) Validate() {
 	}
 }
 
-func collectionKey(collectionId string) string {
-	return fmt.Sprintf("col:%s", collectionId)
+func collectionKey(collectionId uint64) string {
+	return fmt.Sprintf("c:%d", collectionId)
 }
 
-func newCollectionID() int64 {
+func newCollectionID() uint64 {
 	return getCount(CollectionCount)
 }
