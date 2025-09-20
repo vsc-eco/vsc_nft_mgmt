@@ -41,3 +41,8 @@ func StringToUInt64(ptr *string) uint64 {
 func UInt64ToString(val uint64) string {
 	return strconv.FormatUint(val, 10)
 }
+
+func UInt64ArrayToJsonString(ids []uint64, objectHint string) *string {
+	jsonStr := ToJSON(ids, objectHint)
+	return &jsonStr
+}

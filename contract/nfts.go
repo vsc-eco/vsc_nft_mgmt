@@ -10,7 +10,7 @@ const (
 	maxMetaKeys        = 25  // maximum count of metadata keys for an nft
 	maxMetaKeyLength   = 50  // maaximum length of a key within the metadata
 	maxMetaValueLength = 512 // maximum length of a value within the metadata
-	maxEditions        = 99  // maximum editions mintable at once
+	maxEditions        = 500 // maximum editions mintable at once
 )
 
 // the basic nft object
@@ -201,46 +201,19 @@ func GetNFT(id *string) *string {
 // returns a list of all nfts within a give collection id
 //
 //go:wasmexport nft_get_collection
-func GetNFTsForCollection(collectionId *string) *string {
+func GetNFTIdsForCollection(collectionId *string) *string {
 	// get all NFTs in a collection
 	nftIds := GetIDsFromIndex(NFTsCollection + *collectionId)
-	jsonStr := getNFTsByIds(nftIds, false)
-	sdk.Log(jsonStr)
-	return &jsonStr
-}
-
-// returns a list of nfts currently owned by a give user
-//
-//go:wasmexport nft_get_owner
-func GetNFTsForOwner(owner *string) *string {
-	// get all NFTs owned by a user
-	collectionIds := GetIDsFromIndex(CollectionsOwner + *owner)
-	nfts := make([]*NFT, 0, len(collectionIds))
-	// iterate over all collections of the user
-	for _, n := range collectionIds {
-		nftIds := GetIDsFromIndex(NFTsCollection + UInt64ToString(n))
-
-		// iterate over all nfts in the collection
-		for _, n := range nftIds {
-			currentNFT := loadNFT(n)
-
-			nfts = append(nfts, currentNFT)
-		}
-	}
-	jsonStr := ToJSON(nfts, "nfts")
-	sdk.Log(jsonStr)
-	return &jsonStr
+	return UInt64ArrayToJsonString(nftIds, "nft ids")
 }
 
 // returns a list of all nfts minted by a give user
 //
 //go:wasmexport nft_get_creator
-func GetNFTsForCreator(creator *string) *string {
+func GetNFTIdsForCreator(creator *string) *string {
 	// get all NFTs created by a user
 	nftIds := GetIDsFromIndex(NFTsCreator + *creator)
-	jsonStr := getNFTsByIds(nftIds, true)
-	sdk.Log(jsonStr)
-	return &jsonStr
+	return UInt64ArrayToJsonString(nftIds, "nft ids")
 }
 
 // returns all editions for a given genesis nft id
@@ -249,9 +222,7 @@ func GetNFTsForCreator(creator *string) *string {
 func GetEditionsForNFT(id *string) *string {
 	// get all NFT editions related to the genesis NFT
 	nftIds := GetIDsFromIndex(AllEditionsOfGenesis + *id)
-	jsonStr := getNFTsByIds(nftIds, false)
-	sdk.Log(jsonStr)
-	return &jsonStr
+	return UInt64ArrayToJsonString(nftIds, "nft ids")
 }
 
 // returns a list of nft editions still in creators collection for a given genesis nft id
@@ -260,29 +231,7 @@ func GetEditionsForNFT(id *string) *string {
 func GetAvailableEditionsForNFT(id *string) *string {
 	// get all NFT editions related to the genesis NFT
 	nftIds := GetIDsFromIndex(AvailEditionsOfGenesis + *id)
-	jsonStr := getNFTsByIds(nftIds, false)
-	return &jsonStr
-}
-
-func getNFTsByIds(nftIds []uint64, withRelatedEditions bool) string {
-	nfts := make([]*NFT, 0, len(nftIds))
-	// iterate over all nfts
-	for _, n := range nftIds {
-		currentNFT := loadNFT(n)
-		nfts = append(nfts, currentNFT)
-		if withRelatedEditions {
-			// iterate over all editions of genesis edition
-			editionIds := GetIDsFromIndex(AllEditionsOfGenesis + UInt64ToString(n))
-			for _, e := range editionIds {
-				currentEdition := loadNFT(e)
-				nfts = append(nfts, currentEdition)
-			}
-		}
-	}
-
-	jsonStr := ToJSON(nfts, "nfts")
-	sdk.Log(jsonStr)
-	return jsonStr
+	return UInt64ArrayToJsonString(nftIds, "nft ids")
 }
 
 // Contract State Interactions

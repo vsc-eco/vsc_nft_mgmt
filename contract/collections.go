@@ -54,15 +54,9 @@ func GetCollection(id *string) *string {
 }
 
 //go:wasmexport col_get_user
-func GetCollectionsForOwner(owner *string) *string {
+func GetCollectionIdsForOwner(owner *string) *string {
 	collectionIds := GetIDsFromIndex(CollectionsOwner + *owner)
-	collections := make([]Collection, 0)
-	for _, n := range collectionIds {
-		currentCollection := loadCollection(n)
-		collections = append(collections, *currentCollection)
-	}
-	jsonStr := ToJSON(collections, "collections")
-	return &jsonStr
+	return UInt64ArrayToJsonString(collectionIds, "collection ids")
 }
 
 // Contract State Persistence
