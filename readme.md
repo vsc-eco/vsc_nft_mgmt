@@ -141,12 +141,14 @@ Creates **editions** of NFTs.
   "col": "123", // mandatory: target collection ID
   "name": "Silver Shield", // mandatory: name of the NFT
   "desc": "Limited edition silver shield", // optional: description stored only on genesis
-  "bound": false, // optional: true = can be transferred only once from creator
+  "bound": false, // optional: true = can be transferred only once from creator 
   "meta": { // optional: metadata (applied to genesis to avoid redundancy)
     "rarity": "rare",
     "defense": "200"
   },
-  "editions": 10 // mandatory: total number of editions (> 0)
+  "editions": 10, // mandatory: total number of editions (> 0) max 100
+  "g": 10, // optional: genesis edition if the series should get extended
+
 }
 ```
 
@@ -173,7 +175,7 @@ Returns a collection.
 | col_get     | 123     | mandatory: Collection ID     |
 
 
-##### Get Collections For Address
+##### Get Collections For Address (only available in test build)
 Returns all collections for a give address.
 | action | payload  | payload description |
 | ------ | -------- | ------------------- |
@@ -186,31 +188,38 @@ Returns an NFT
 | ------ | -------- | ------------------- |
 | nft_get | 42 | mandatory: NFT ID |
 
-##### Get Editions for an NFT
+##### Get Next Available Edition for an NFT
+Returns all Editions for a given NFT
+| action | payload  | payload description |
+| ------ | -------- | ------------------- |
+| nft_get_available | 42 | mandatory: genesis NFT ID |
+
+
+##### Get Editions for an NFT (only available in test build)
 Returns all Editions for a given NFT
 | action | payload  | payload description |
 | ------ | -------- | ------------------- |
 | nft_get_editions | 42 | mandatory: genesis NFT ID |
 
-##### Get Available Editions for an NFT
+##### Get Available Editions for an NFT (only available in test build)
 Returns all Editions for a given NFT that are still owned by the minting address.
 | action | payload  | payload description |
 | ------ | -------- | ------------------- |
-| nft_get_available | 42 | mandatory: genesis NFT ID |
+| nft_get_availableList | 42 | mandatory: genesis NFT ID |
 
-##### Get NFTs for Collection
+##### Get NFTs for Collection (only available in test build)
 Returns a list of NFTs within a collection.
 | action | payload  | payload description |
 | ------ | -------- | ------------------- |
 | nft_get_collection | 123 | mandatory: collection ID |
 
-##### Get NFTs for Owner
+##### Get NFTs for Owner (only available in test build)
 Returns all NFTs owned by a specified address.
 | action | payload  | payload description |
 | ------ | -------- | ------------------- |
 | nft_get_owner | hive:tibfox | mandatory: owner address |
 
-##### Get NFTs minted by Adress
+##### Get NFTs minted by Adress (only available in test build)
 Returns all NFTs minted by a specified address.
 | action | payload  | payload description |
 | ------ | -------- | ------------------- |
