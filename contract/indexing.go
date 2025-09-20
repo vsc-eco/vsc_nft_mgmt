@@ -139,22 +139,65 @@ func GetIDsFromIndex(baseKey string) []uint64 {
 	return all
 }
 
-// // checks all chunks for a specific id.
-// func GetOneIDFromIndex(baseKey string, id uint64) (uint64, error) {
-// 	chunks := getChunkCount(baseKey)
-// 	for i := 0; i < chunks; i++ {
-// 		key := chunkKey(baseKey, i)
-// 		ptr := sdk.StateGetObject(key)
-// 		if ptr == nil || *ptr == "" {
-// 			continue
-// 		}
+// SliceToIndex adds a slice of IDs to a given baseKey, filling existing chunks first,
+// then creating new chunks as needed. Avoids duplicates.
+func SliceToIndex(baseKey string, ids []uint64) {
+	if len(ids) == 0 {
+		return
+	}
 
-// 		ids := *FromJSON[[]uint64](*ptr, "index "+key)
-// 		for _, v := range ids {
-// 			if v == id {
-// 				return id, nil
-// 			}
-// 		}
-// 	}
-// 	return -1, nil
-// }
+	chunks := getChunkCount(baseKey)
+	idSet := make(map[uint64]struct{})
+	for _, id := range ids {
+		idSet[id] = struct{}{}
+	}
+
+	// iterate existing chunks
+	for i := 0; i < chunks; i++ {
+		key := chunkKey(baseKey, i)
+		ptr := sdk.StateGetObject(key)
+
+		var chunkIds []uint64
+		if ptr != nil && *ptr != "" {
+			chunkIds = *FromJSON[[]uint64](*ptr, "index "+key)
+
+			// build a set of existing IDs to avoid duplicates
+			existing := make(map[uint64]struct{}, len(chunkIds))
+			for _, e := range chunkIds {
+				existing[e] = struct{}{}
+			}
+
+			// append as many IDs as fit
+			for id := range idSet {
+				if len(chunkIds) >= maxChunkSize {
+					break
+				}
+				if _, ok := existing[id]; !ok {
+					chunkIds = append(chunkIds, id)
+					delete(idSet, id)
+				}
+			}
+
+			sdk.StateSetObject(key, ToJSON(chunkIds, "index "+key))
+			if len(idSet) == 0 {
+				return // all IDs added
+			}
+		}
+	}
+
+	// add remaining IDs in new chunks
+	for len(idSet) > 0 {
+		key := chunkKey(baseKey, chunks)
+		chunkIds := make([]uint64, 0, maxChunkSize)
+		for id := range idSet {
+			if len(chunkIds) >= maxChunkSize {
+				break
+			}
+			chunkIds = append(chunkIds, id)
+			delete(idSet, id)
+		}
+		sdk.StateSetObject(key, ToJSON(chunkIds, "index "+key))
+		chunks++
+	}
+	setChunkCount(baseKey, chunks)
+}

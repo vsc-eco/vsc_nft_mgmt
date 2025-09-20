@@ -46,6 +46,9 @@ func CreateCollection(payload *string) *string {
 	return nil
 }
 
+// GET FUNCTIONS
+// returns an collection for a given collection id
+
 //go:wasmexport col_get
 func GetCollection(id *string) *string {
 	collection := loadCollection(StringToUInt64(id))
@@ -53,6 +56,9 @@ func GetCollection(id *string) *string {
 	return &jsonStr
 }
 
+// returns all collection ids for a given owner
+// TODO: remove for production code (indexes should be querried via API calls)
+//
 //go:wasmexport col_get_user
 func GetCollectionIdsForOwner(owner *string) *string {
 	collectionIds := GetIDsFromIndex(CollectionsOwner + *owner)

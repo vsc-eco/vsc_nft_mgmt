@@ -10,7 +10,7 @@ const (
 	maxMetaKeys        = 25  // maximum count of metadata keys for an nft
 	maxMetaKeyLength   = 50  // maaximum length of a key within the metadata
 	maxMetaValueLength = 512 // maximum length of a value within the metadata
-	maxEditions        = 500 // maximum editions mintable at once
+	maxEditions        = 100 // maximum editions mintable at once
 )
 
 // the basic nft object
@@ -30,8 +30,8 @@ type NFT struct {
 
 // non-unique nfts have additional edition data
 type NFTEdition struct {
-	EditionNumber  uint64 `json:"no"`
-	EditionsTotal  uint64 `json:"t"`
+	EditionNumber  uint32 `json:"no"`
+	EditionsTotal  uint32 `json:"t"`
 	GenesisEdition uint64 `json:"g"` // only the genesis edition will have nftPrefs to save space
 }
 
@@ -62,7 +62,8 @@ type MintNFTEditionsArgs struct {
 	Description    string            `json:"desc"`  // optional: description of the nft
 	SingleTransfer bool              `json:"bound"` // optional: true if the nft is non-transferrable
 	Metadata       map[string]string `json:"meta"`  // optional: additional metadata for the nft
-	EditionsTotal  uint64            `json:"et"`    // mandatory: total count of editions
+	EditionsTotal  uint32            `json:"et"`    // mandatory: total count of editions
+	GenesisEdition *uint64           `json:"g"`     // optional: set genesis nft id if editions should be extended
 }
 
 // MINT FUNCTIONS
@@ -75,18 +76,26 @@ func MintNFTUnique(payload *string) *string {
 	collection := loadCollection(input.Collection)
 	creator := sdk.GetEnvKey("msg.sender")
 	validateMintArgs(input.Name, input.Description, input.Metadata, collection.Owner, *creator)
+	nftID := newNFTID()
+	env := sdk.GetEnv()
 
 	createAndSaveNFT(
+		nftID,
 		sdk.Address(*creator),
 		sdk.Address(*creator),
 		input.Collection,
 		input.Description,
 		input.SingleTransfer,
 		input.Metadata,
-		0, 0, 0, // editionNumber, editionsTotal, genesisEditionID
-
+		false, 0, 0, false, // editionedNFT,editionNumber, genesisEditionID, extend editions
+		env.TxId,
 	)
+	// add nft to index
+	AddIDToIndex(NFTsCreator+*creator, nftID)
+	AddIDToIndex(NFTsCollection+UInt64ToString(input.Collection), nftID)
 
+	// increase count
+	setCount(NFTsCount, nftID+1)
 	return nil
 }
 
@@ -108,22 +117,50 @@ func MintNFTEditions(payload *string) *string {
 		sdk.Abort("editions total <= 0")
 	}
 
-	genesisEditionID := newNFTID()
-	for editionNumber := 1; editionNumber <= int(input.EditionsTotal); editionNumber++ {
+	txId := sdk.GetEnvKey("tx.id")
+	nftID := newNFTID()
+	genesisEditionID := nftID
 
+	existingEditionsCount := uint32(0)
+	extendEditions := false
+	var editionIDs []uint64
+
+	if input.GenesisEdition != nil {
+		genesisEditionID = *input.GenesisEdition
+		extendEditions = true
+		existingEditionsCount = getEditionsCount(genesisEditionID)
+	}
+
+	for i := 1; i <= int(input.EditionsTotal); i++ {
 		createAndSaveNFT(
+			nftID+uint64(i),
 			sdk.Address(*creator),
 			sdk.Address(*creator),
 			input.Collection,
 			input.Description,
 			input.SingleTransfer,
 			input.Metadata,
-			uint64(editionNumber),
-			input.EditionsTotal,
+			true,
+			existingEditionsCount+uint32(i),
 			genesisEditionID,
+			extendEditions,
+			*txId,
 		)
 
+		editionIDs = append(editionIDs, nftID+uint64(i))
 	}
+
+	// add genesis to creator index
+	if !extendEditions {
+		AddIDToIndex(NFTsCreator+*creator, genesisEditionID)
+	}
+	// batch-add to indices
+	SliceToIndex(NFTsCollection+UInt64ToString(input.Collection), editionIDs)
+	SliceToIndex(AllEditionsOfGenesis+UInt64ToString(genesisEditionID), editionIDs)
+	SliceToIndex(AvailEditionsOfGenesis+UInt64ToString(genesisEditionID), editionIDs)
+	// increase nft counter
+	setCount(NFTsCount, nftID+uint64(len(editionIDs)))
+
 	return nil
 }
 
@@ -198,7 +235,25 @@ func GetNFT(id *string) *string {
 	return &jsonStr
 }
 
+// returns the next available edition nft still in creators collection for a given genesis nft id
+//
+//go:wasmexport nft_get_available
+func GetNextAvailableEditionForNFT(id *string) *string {
+	// get all NFT editions related to the genesis NFT
+	nftIds := GetIDsFromIndex(AvailEditionsOfGenesis + *id)
+	// get the smalles nftId
+	min := nftIds[0]
+	for _, v := range nftIds[1:] {
+		if v < min {
+			min = v
+		}
+	}
+	minStr := UInt64ToString(min)
+	return &minStr
+}
+
 // returns a list of all nfts within a give collection id
+// TODO: remove for production code as this could result in huge gas costs (indexes should be querried via API calls)
 //
 //go:wasmexport nft_get_collection
 func GetNFTIdsForCollection(collectionId *string) *string {
@@ -207,7 +262,8 @@ func GetNFTIdsForCollection(collectionId *string) *string {
 	return UInt64ArrayToJsonString(nftIds, "nft ids")
 }
 
-// returns a list of all nfts minted by a give user
+// returns a list of all nfts minted by a give user (only unique or genesis)
+// TODO: remove for production code as this could result in huge gas costs (indexes should be querried via API calls)
 //
 //go:wasmexport nft_get_creator
 func GetNFTIdsForCreator(creator *string) *string {
@@ -217,6 +273,7 @@ func GetNFTIdsForCreator(creator *string) *string {
 }
 
 // returns all editions for a given genesis nft id
+// TODO: remove for production code as this could result in huge gas costs (indexes should be querried via API calls)
 //
 //go:wasmexport nft_get_editions
 func GetEditionsForNFT(id *string) *string {
@@ -225,9 +282,10 @@ func GetEditionsForNFT(id *string) *string {
 	return UInt64ArrayToJsonString(nftIds, "nft ids")
 }
 
-// returns a list of nft editions still in creators collection for a given genesis nft id
+// returns a list of nfts still in creators collection for a given genesis nft id
+// TODO: remove for production code as this could result in huge gas costs (indexes should be querried via API calls)
 //
-//go:wasmexport nft_get_available
+//go:wasmexport nft_get_availableList
 func GetAvailableEditionsForNFT(id *string) *string {
 	// get all NFT editions related to the genesis NFT
 	nftIds := GetIDsFromIndex(AvailEditionsOfGenesis + *id)
@@ -252,7 +310,15 @@ func loadNFT(id uint64) *NFT {
 		sdk.Abort(fmt.Sprintf("nft %d not found", id))
 	}
 	nft := FromJSON[NFT](*ptr, "nft")
+	if nft.Edition != nil {
+		nft.Edition.EditionsTotal = getEditionsCount(id)
+	}
 	return nft
+}
+
+func getEditionsCount(id uint64) uint32 {
+	editionsTotal := GetIDsFromIndex(AllEditionsOfGenesis + UInt64ToString(id))
+	return uint32(len(editionsTotal))
 }
 
 // functions arguments validation
@@ -295,37 +361,32 @@ func validateMintArgs(
 }
 
 func createAndSaveNFT(
+	nftId uint64,
 	creator sdk.Address,
 	owner sdk.Address,
 	collection uint64,
 	description string,
 	singleTransfer bool,
 	metadata map[string]string,
-	editionNumber uint64,
-	editionsTotal uint64,
+	editionedNFT bool,
+	editionNumber uint32,
 	genesisEditionID uint64,
-) *NFT {
-	env := sdk.GetEnv()
-	nftID := newNFTID()
+	extendEditions bool,
+	txId string,
+) {
 
 	var nftEdition *NFTEdition
 	var nftPrefs *NFTPrefs
 
 	// if we mint an nft edition
-	if editionsTotal > 0 {
-		// if we mint the first edition
-		if editionNumber == 1 {
-			nftID = genesisEditionID
-		}
+	if editionedNFT {
 		nftEdition = &NFTEdition{
 			EditionNumber:  editionNumber,
-			EditionsTotal:  editionsTotal,
 			GenesisEdition: genesisEditionID,
 		}
-
 	}
-	// if it is the first edition or a unique nft
-	if editionNumber == 1 || editionsTotal == 0 {
+	// if it is the first edition, extended editions or a unique nft
+	if !editionedNFT || !extendEditions || editionNumber == 1 {
 		// Only genesis edition keeps prefs to avoid redundant state storage
 		nftPrefs = &NFTPrefs{
 			Description: description,
@@ -334,30 +395,18 @@ func createAndSaveNFT(
 	}
 
 	nft := &NFT{
-		ID:             nftID,
+		ID:             nftId,
 		Creator:        creator,
 		Owner:          owner,
 		Version:        nftVersion,
-		CreationTxID:   env.TxId,
+		CreationTxID:   txId,
 		Collection:     collection,
 		SingleTransfer: singleTransfer,
 		NFTPrefs:       nftPrefs,
 		Edition:        nftEdition,
 	}
 	saveNFT(nft)
-	// add nft to collection index
-	AddIDToIndex(NFTsCollection+UInt64ToString(nft.Collection), nftID)
-	if nft.NFTPrefs != nil {
-		// only store unique nfts or genesis editions to creator index
-		AddIDToIndex(NFTsCreator+nft.Creator.String(), nftID)
-	}
-	if nft.Edition != nil {
-		// add editions to genesis nft index
-		AddIDToIndex(AllEditionsOfGenesis+UInt64ToString(nft.Edition.GenesisEdition), nftID)
-		AddIDToIndex(AvailEditionsOfGenesis+UInt64ToString(nft.Edition.GenesisEdition), nftID)
-	}
-	setCount(NFTsCount, nftID+1)
-	return nft
+
 }
 
 func nftKey(nftId uint64) string {

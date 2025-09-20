@@ -43,7 +43,7 @@ func CleanBadgerDB() {
 
 // CallContract executes a contract action and asserts basic success
 func CallContract(t *testing.T, ct *test_utils.ContractTest, action string, payload json.RawMessage, intents []contracts.Intent, authUser string, expectedResult bool, maxGas uint) (stateEngine.TxResult, uint, map[string][]string) {
-
+	fmt.Println(action)
 	result, gasUsed, logs := ct.Call(stateEngine.TxVscCallContract{
 		Caller: authUser,
 
