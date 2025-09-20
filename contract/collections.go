@@ -56,15 +56,6 @@ func GetCollection(id *string) *string {
 	return &jsonStr
 }
 
-// returns all collection ids for a given owner
-// TODO: remove for production code (indexes should be querried via API calls)
-//
-//go:wasmexport col_get_user
-func GetCollectionIdsForOwner(owner *string) *string {
-	collectionIds := GetIDsFromIndex(CollectionsOwner + *owner)
-	return UInt64ArrayToJsonString(collectionIds, "collection ids")
-}
-
 // Contract State Persistence
 func saveCollection(collection *Collection) error {
 	b, err := json.Marshal(collection)
