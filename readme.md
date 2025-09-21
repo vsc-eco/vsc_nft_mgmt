@@ -67,9 +67,8 @@ For instructions related to building and deploying see the [official docs - TODO
 ## ✅ Testing
 
 There are tests defined under `tests/basic_test.go`for all the important exported function implementations.
-This file also uses the getters of the `contract/getters_tests.go` for visualization of the contract state.
 
-You can build a testing build (including the various getter functions) with the following command contrary to the official documentation:
+You can build a testing build with the following command contrary to the official documentation:
 `tinygo build -gc=custom -scheduler=none -panic=trap -no-debug -target=wasm-unknown -tags=test -o test/artifacts/main.wasm ./contract`
 
 The tests are designed to run sequencially because the mocking database layer is a single-use-file only.
@@ -121,7 +120,7 @@ Creates a **unique** NFT.
   "col": "123", // mandatory: target collection ID
   "name": "Golden Sword", // mandatory: name of the NFT
   "desc": "A legendary one-of-a-kind sword", // optional: description
-  "bound": false, // optional: true = can be transferred only once from creator
+  "bound": false, // optional: true = can be transferred only once from creator (/)defaults to false)
   "meta": { // optional: metadata key-value pairs
     "rarity": "legendary",
     "attack": "150",
@@ -149,6 +148,8 @@ Creates **editions** of NFTs.
 }
 ```
 
+If `g` is set then `name, description, bound, meta` will get ignored. `Name` is still mandatory.
+
 #### Transfer NFT
 action: `nft_transfer`
 Tranfers an **NFT** (edition or unique) to a new collection or a new owner. Only the owner or a administrative defined market contract can move an nft to a new owner. Only owners can move the an NFT to another owned collection.
@@ -162,7 +163,7 @@ Tranfers an **NFT** (edition or unique) to a new collection or a new owner. Only
 
 ### Queries
 The following exported functions return json and are meant to be used by other contracts like the market contract for example. Reading data from a contract state outside of the smart contract environment is more cost-effective and faster by utilizing the vsc API. (TODO: add link to doc part about reading key/value from contract state)
-For that reason most of the getters below are only incuded in the test build (see above).
+For that reason there are only sing-object getters defined.
 
 
 #### Collections
@@ -173,12 +174,6 @@ Returns a collection.
 | col_get     | 123     | mandatory: Collection ID     |
 
 
-##### Get Collections For Address (only available in test build)
-Returns all collections for a give address.
-| action | payload  | payload description |
-| ------ | -------- | ------------------- |
-| col_get_user | hive:tibfox | mandatory: owner address |
-
 #### NFTs
 ##### Get One NFT
 Returns an NFT
@@ -186,51 +181,9 @@ Returns an NFT
 | ------ | -------- | ------------------- |
 | nft_get | 42 | mandatory: NFT ID |
 
-##### Get Next Available Edition for an NFT
-Returns all Editions for a given NFT
-| action | payload  | payload description |
-| ------ | -------- | ------------------- |
-| nft_get_available | 42 | mandatory: genesis NFT ID |
-
-
-##### Get Editions for an NFT (only available in test build)
-Returns all Editions for a given NFT
-| action | payload  | payload description |
-| ------ | -------- | ------------------- |
-| nft_get_editions | 42 | mandatory: genesis NFT ID |
-
-##### Get Available Editions for an NFT (only available in test build)
-Returns all Editions for a given NFT that are still owned by the minting address.
-| action | payload  | payload description |
-| ------ | -------- | ------------------- |
-| nft_get_availableList | 42 | mandatory: genesis NFT ID |
-
-##### Get NFTs for Collection (only available in test build)
-Returns a list of NFTs within a collection.
-| action | payload  | payload description |
-| ------ | -------- | ------------------- |
-| nft_get_collection | 123 | mandatory: collection ID |
-
-##### Get NFTs for Owner (only available in test build)
-Returns all NFTs owned by a specified address.
-| action | payload  | payload description |
-| ------ | -------- | ------------------- |
-| nft_get_owner | hive:tibfox | mandatory: owner address |
-
-##### Get NFTs minted by Adress (only available in test build)
-Returns all NFTs minted by a specified address.
-| action | payload  | payload description |
-| ------ | -------- | ------------------- |
-| nft_get_creator | hive:tibfox | mandatory: creator address |
-
-
-
 ## 📚 Documentation
-
 -   [Go-VSC-Node](https://github.com/vsc-eco/go-vsc-node)
 -   [Go-Contract-Template](https://github.com/vsc-eco/go-contract-template)
 
-
 ## 📜 License
-
 This project is licensed under the [MIT License](LICENSE).
