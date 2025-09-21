@@ -36,9 +36,7 @@ Each Adress can have multiple collections. In each collection can be included mu
     ├── contract/
     │   └── admin.go // administrative functions
     │   └── collections.go // functions for creating and getting collection data
-    │   └── getters_tests.go // exported getter functions for testing only
     │   └── helpers.go // various utility functions
-    │   └── indexing.go // features to maintaining multiple indexes for faster reads of contract state data
     │   └── main.go // placeholder
     │   └── nfts.go // functions related to nfts like minting, transferring and getting nft data
     ├── runtime/
