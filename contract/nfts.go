@@ -395,3 +395,24 @@ func nftKey(nftId uint64) string {
 func newNFTID() uint64 {
 	return getCount(NFTsCount)
 }
+
+func emitTransferEvent(nftId uint64, fromAddress string, toAddress string, fromCollection uint64, toCollection uint64) {
+	sdk.Log(fmt.Sprintf(
+		"Transfer|tokenId:%d|from:%s|to:%s|fromCollection:%d|toCollection:%d",
+		nftId,
+		fromAddress,
+		toAddress,
+		fromCollection,
+		toCollection,
+	))
+}
+
+func emitMintEvent(nftId uint64, mindedByAddress string, receiverAddress string, collection uint64) {
+	sdk.Log(fmt.Sprintf(
+		"Mint|tokenId:%d|by:%s|to:%s|collection:%d",
+		nftId,
+		mindedByAddress,
+		receiverAddress,
+		collection,
+	))
+}
