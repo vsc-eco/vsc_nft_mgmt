@@ -364,7 +364,7 @@ func emitMintEvent(nftId uint64, mindedByAddress string, receiverAddress string,
 
 func emitBurnEvent(nftId uint64, ownerAddress string, collection uint64) {
 	sdk.Log(fmt.Sprintf(
-		"Burn|tokenId:%d|owner:%s|collection:%d",
+		"Burn|id:%d|owner:%s|collection:%d",
 		nftId,
 		ownerAddress,
 		collection,

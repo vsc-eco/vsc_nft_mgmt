@@ -187,20 +187,20 @@ The contract outputs standardized event logs for future indexers. This way a UI 
 
 | Event Name            | Parameter        | Type     | Description                                           |
 | --------------------- | ---------------- | -------- | ----------------------------------------------------- |
-| **Transfer**          | `id`             | uint64   | NFT ID being transferred                              |
+| Transfer              | `id`             | uint64   | NFT ID being transferred                              |
 |                       | `from`           | string   | Address of the current owner                          |
 |                       | `to`             | string   | Address of the recipient                              |
 |                       | `fromCollection` | uint64   | Collection ID from which the NFT is moved             |
 |                       | `toCollection`   | uint64   | Collection ID to which the NFT is moved               |
-| **Mint**              | `id`             | uint64   | NFT ID being minted                                   |
+| Mint                  | `id`             | uint64   | NFT ID being minted                                   |
 |                       | `by`             | string   | Address of the minter (creator)                       |
 |                       | `to`             | string   | Address receiving the NFT                             |
 |                       | `collection`     | uint64   | Collection ID the NFT belongs to                      |
 |                       | `genesis`        | \*uint64 | Optional: ID of the genesis NFT if this is an edition |
-| **Burn**              | `tokenId`        | uint64   | NFT ID being burned                                   |
+| Burn                  | `id`             | uint64   | NFT ID being burned                                   |
 |                       | `owner`          | string   | Address of the current owner of the NFT               |
 |                       | `collection`     | uint64   | Collection ID the NFT belongs to                      |
-| **CollectionCreated** | `id`             | uint64   | Collection ID that was created                        |
+| CollectionCreated     | `id`             | uint64   | Collection ID that was created                        |
 |                       | `by`             | string   | Address of the creator of the collection              |
 
 
