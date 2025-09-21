@@ -160,7 +160,7 @@ Tranfers an **NFT** (edition or unique) to a new collection or a new owner. Only
 ```
 
 ### Queries
-The following exported functions return json and are meant to be used by other contracts like the market contract for example. Reading data from a contract state outside of the smart contract environment is more cost-effective and faster by utilizing the vsc API. (TODO: add link to doc part about reading key/value from contract state)
+The following exported functions return json and are meant to be used by other contracts like the market contract for example. Reading data from a contract state outside of the smart contract environment is more cost-effective and faster by utilizing the vsc API and a future indexer.
 For that reason there are only sing-object getters defined.
 
 
@@ -178,6 +178,32 @@ Returns an NFT
 | action | payload  | payload description |
 | ------ | -------- | ------------------- |
 | nft_get | 42 | mandatory: NFT ID |
+
+
+## On-Chain Events
+
+The contract outputs standardized event logs for future indexers. This way a UI can quickly show nfts within a collection, available editions for an nft, etc.
+
+
+| Event Name            | Parameter        | Type     | Description                                           |
+| --------------------- | ---------------- | -------- | ----------------------------------------------------- |
+| **Transfer**          | `id`             | uint64   | NFT ID being transferred                              |
+|                       | `from`           | string   | Address of the current owner                          |
+|                       | `to`             | string   | Address of the recipient                              |
+|                       | `fromCollection` | uint64   | Collection ID from which the NFT is moved             |
+|                       | `toCollection`   | uint64   | Collection ID to which the NFT is moved               |
+| **Mint**              | `id`             | uint64   | NFT ID being minted                                   |
+|                       | `by`             | string   | Address of the minter (creator)                       |
+|                       | `to`             | string   | Address receiving the NFT                             |
+|                       | `collection`     | uint64   | Collection ID the NFT belongs to                      |
+|                       | `genesis`        | \*uint64 | Optional: ID of the genesis NFT if this is an edition |
+| **Burn**              | `tokenId`        | uint64   | NFT ID being burned                                   |
+|                       | `owner`          | string   | Address of the current owner of the NFT               |
+|                       | `collection`     | uint64   | Collection ID the NFT belongs to                      |
+| **CollectionCreated** | `id`             | uint64   | Collection ID that was created                        |
+|                       | `by`             | string   | Address of the creator of the collection              |
+
+
 
 ## 📚 Documentation
 -   [Go-VSC-Node](https://github.com/vsc-eco/go-vsc-node)
