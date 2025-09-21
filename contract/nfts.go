@@ -85,7 +85,7 @@ func MintNFTUnique(payload *string) *string {
 		input.Description,
 		input.SingleTransfer,
 		input.Metadata,
-		&nftID,
+		nil,
 		env.TxId,
 	)
 

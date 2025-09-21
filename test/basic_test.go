@@ -272,8 +272,14 @@ func TestMintEditions(t *testing.T) {
 			"a": "a value",
 			"b": "b value",
 		},
-		"et": 1000,
+		"et": 10,
 	}), nil, "hive:userA", true, uint(10_000_000_000_000))
+
+	// get minted nft 0
+	CallContract(t, ct, "nft_get", PayloadToJSON("0"), nil, "hive:userA", true, uint(10_000_000))
+
+	// get minted nft 9
+	CallContract(t, ct, "nft_get", PayloadToJSON("9"), nil, "hive:userA", true, uint(10_000_000))
 
 	// try to mint max+1 nft editions (should fail)
 	CallContract(t, ct, "nft_mint_edition", PayloadToJSON(map[string]any{
