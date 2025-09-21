@@ -35,22 +35,18 @@ Each Adress can have multiple collections. In each collection can be included mu
     ├── artifacts/  //Contains 
     ├── contract/
     │   └── admin.go // administrative functions
-    │   └── collections.go // functions for creating and getting collections
-    │   └── helpers.go // various handy functions
+    │   └── collections.go // functions for creating and getting collection data
+    │   └── getters_tests.go // exported getter functions for testing only
+    │   └── helpers.go // various utility functions
     │   └── indexing.go // features to maintaining multiple indexes for faster reads of contract state data
     │   └── main.go // placeholder
-    │   └── mock_collection_test.go // unit tests all about *collections.go*
-    │   └── mock_nft_tests.go // unit tests all about *nfts.go*
-    │   └── nfts.go // functions related to nfts like minting, transferring and various getters
-    │   └── sdkInterface.go // an interface for enabling the developer to do unit tests without production environment
+    │   └── nfts.go // functions related to nfts like minting, transferring and getting nft data
     ├── runtime/
     │   └── gc_leaking_exported.go
-    │   └── mock_placeholder.go // dummy for building mock version
     ├── sdk/ //SDK implementation. Do NOT modify
     │   └── address.go
     │   └── asset.go
     │   └── env.go        
-    │   └── sdk_mock.go // sdk definition to enable local unit tests  
     │   └── sdk.go    
     ├── go.mod
     ├── readme.md
@@ -60,9 +56,8 @@ Each Adress can have multiple collections. In each collection can be included mu
 
 -   [Go](https://golang.org/dl/) **1.23.2+**
 -   [TinyGo](https://tinygo.org/getting-started/install/)
--   [Wasm Edge](https://wasmedge.org/docs/start/install/)
+-   [Wasm Edge](https://wasmedge.org/docs/start/install/) **v0.13.4**
 -   [Wasm Tools](https://github.com/bytecodealliance/wasm-tools)
-
 
 ## 🚀 Build & Deploy
 
@@ -71,21 +66,23 @@ For instructions related to building and deploying see the [official docs - TODO
 
 ## ✅ Testing
 
-There are unit tests defined for all the important exported function implementations:
+There are tests defined under `tests/basic_test.go`for all the important exported function implementations.
+This file also uses the getters of the `contract/getters_tests.go` for visualization of the contract state.
 
-``` bash
-cd contract
-go test -tags=test -v
-```
-You should see a PASS at the end. If not there is at least one unit tests that failed:
+You can build a testing build (including the various getter functions) with the following command contrary to the official documentation:
+`tinygo build -gc=custom -scheduler=none -panic=trap -no-debug -target=wasm-unknown -tags=test -o artifacts/main.wasm ./contract`
+
+The tests are designed to run sequencially because the mocking database layer is a single-use-file only.
+For running the tests you imply run `go test -p 1 ./test -v` from within the root. 
+
+You should see a PASS at the end. If not there is at least one tests that failed:
 ```
 ...
---- PASS: TestGetAvailableEditionsForNFT_Dynamic (0.00s)
-=== RUN   TestGetAvailableEditionsForNFT_Negative
---- PASS: TestGetAvailableEditionsForNFT_Negative (0.00s)
+gas used: 8153175
+gas max : 10000000
+--- PASS: TestExtendEditionNFTs (0.57s)
 PASS
-ok      vsc_nft_mgmt/contract   0.003s
-
+ok      vsc_nft_mgmt/test       1.235s
 ```
 
 
@@ -165,6 +162,7 @@ Tranfers an **NFT** (edition or unique) to a new collection or a new owner. Only
 
 ### Queries
 The following exported functions return json and are meant to be used by other contracts like the market contract for example. Reading data from a contract state outside of the smart contract environment is more cost-effective and faster by utilizing the vsc API. (TODO: add link to doc part about reading key/value from contract state)
+For that reason most of the getters below are only incuded in the test build (see above).
 
 
 #### Collections
