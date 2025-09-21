@@ -76,9 +76,12 @@ func saveCollection(collection *Collection) error {
 func loadCollection(id uint64) *Collection {
 	key := collectionKey(id)
 	ptr := sdk.StateGetObject(key)
-	if ptr == nil {
+	if ptr == nil || *ptr == "" {
 		sdk.Abort(fmt.Sprintf("collection %d not found", id))
 	}
+	// if id == 2 {
+	// 	sdk.Log(*ptr)
+	// }
 	collection := FromJSON[Collection](*ptr, "collection")
 	return collection
 }

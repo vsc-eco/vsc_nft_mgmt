@@ -2,26 +2,28 @@ package main
 
 import (
 	"strconv"
+	"strings"
 	"vsc_nft_mgmt/sdk"
 )
 
 // Index functions
-// for fast and more effective reads we maintain indexes in the contract state
-// all indexes are split into chunks of X entries to avoid overflowing the max size of a key/value of the contract state
+// For fast and more effective reads we maintain indexes in the contract state.
+// All indexes are split into chunks of X entries to avoid overflowing the max size of a key/value of the contract state.
 
 // index key prefixes
 const (
 	maxChunkSize           = 2500
-	NFTsCreator            = "n:crtr"     // + creator		// holds nfts minted by a given user (only unique and genesis editions)
-	CollectionsOwner       = "c:ownr:"    // + owner			// holds collections for a given user (to avoid duplicate names)
-	NFTsCollection         = "n:c:"       // + collection		// holds nfts contained in a given collection
-	AllEditionsOfGenesis   = "e_all:g:"   // + genesisId		// holds editions for a given genesis edition
-	AvailEditionsOfGenesis = "e_avail:g:" // + genesisId		// holds available editions for a given genesis edition
-	NFTsCount              = "cnt:n"      // 					// holds a int counter for nfts (to create new ids)
-	CollectionCount        = "cnt:c"      // 					// holds a int counter for collections (to create new ids)
+	NFTsCreator            = "n:crtr"     // + creator        // holds nfts minted by a given user (only unique and genesis editions)
+	CollectionsOwner       = "c:ownr:"    // + owner          // holds collections for a given user (to avoid duplicate names)
+	NFTsCollection         = "n:c:"       // + collection     // holds nfts contained in a given collection
+	AllEditionsOfGenesis   = "e_all:g:"   // + genesisId      // holds editions for a given genesis edition
+	AvailEditionsOfGenesis = "e_avail:g:" // + genesisId      // holds available editions for a given genesis edition
+	NFTsCount              = "cnt:n"      //                  // holds a int counter for nfts (to create new ids)
+	CollectionCount        = "cnt:c"      //                  // holds a int counter for collections (to create new ids)
 )
 
-// stores number of chunks for a base index
+// ---- helpers ----
+
 func chunkCounterKey(base string) string {
 	return base + ":ch"
 }
@@ -30,7 +32,6 @@ func chunkKey(base string, chunk int) string {
 	return base + ":" + strconv.Itoa(chunk)
 }
 
-// get number of chunks for an index
 func getChunkCount(baseKey string) int {
 	ptr := sdk.StateGetObject(chunkCounterKey(baseKey))
 	if ptr == nil || *ptr == "" {
@@ -40,7 +41,6 @@ func getChunkCount(baseKey string) int {
 	return n
 }
 
-// set number of chunks
 func setChunkCount(baseKey string, n int) {
 	sdk.StateSetObject(chunkCounterKey(baseKey), strconv.Itoa(n))
 }
@@ -57,43 +57,75 @@ func setCount(key string, n uint64) {
 	sdk.StateSetObject(key, UInt64ToString(n))
 }
 
-// ensures id exists across all chunks (no duplicates).
+// ---- chunk <-> slice conversion ----
+
+func parseIDs(s string) []uint64 {
+	if s == "" {
+		return []uint64{}
+	}
+	parts := strings.Split(s, ",")
+	ids := make([]uint64, 0, len(parts))
+	for _, p := range parts {
+		if p == "" {
+			continue
+		}
+		ids = append(ids, StringToUInt64(&p))
+	}
+	return ids
+}
+
+func formatIDs(ids []uint64) string {
+	if len(ids) == 0 {
+		return ""
+	}
+	sb := strings.Builder{}
+	for i, id := range ids {
+		if i > 0 {
+			sb.WriteByte(',')
+		}
+		sb.WriteString(UInt64ToString(id))
+	}
+	return sb.String()
+}
+
+// ---- index operations ----
+
+// AddIDToIndex ensures id exists across all chunks (no duplicates).
 func AddIDToIndex(baseKey string, id uint64) {
 	chunks := getChunkCount(baseKey)
 
-	// search existing chunks for duplicates or free space
 	for i := 0; i < chunks; i++ {
 		key := chunkKey(baseKey, i)
 		ptr := sdk.StateGetObject(key)
+		if ptr == nil {
+			continue
+		}
+		ids := parseIDs(*ptr)
 
-		ids := []uint64{}
-		if ptr != nil && *ptr != "" {
-			ids = *FromJSON[[]uint64](*ptr, "index "+key)
+		// O(1) duplicate check
+		idMap := make(map[uint64]struct{}, len(ids))
+		for _, e := range ids {
+			idMap[e] = struct{}{}
+		}
+		if _, exists := idMap[id]; exists {
+			return
+		}
 
-			// duplicate check
-			for _, e := range ids {
-				if e == id {
-					return // already present
-				}
-			}
-
-			// append if space
-			if len(ids) < maxChunkSize {
-				ids = append(ids, id)
-				sdk.StateSetObject(key, ToJSON(ids, "index "+key))
-				return
-			}
+		// append if space
+		if len(ids) < maxChunkSize {
+			ids = append(ids, id)
+			sdk.StateSetObject(key, formatIDs(ids))
+			return
 		}
 	}
 
 	// not found / no space -> create new chunk
 	key := chunkKey(baseKey, chunks)
-	ids := []uint64{id}
-	sdk.StateSetObject(key, ToJSON(ids, "index "+key))
+	sdk.StateSetObject(key, formatIDs([]uint64{id}))
 	setChunkCount(baseKey, chunks+1)
 }
 
-// removes id from whichever chunk it’s in.
+// RemoveIDFromIndex removes id from whichever chunk it’s in (swap-and-trim method).
 func RemoveIDFromIndex(baseKey string, id uint64) {
 	chunks := getChunkCount(baseKey)
 	for i := 0; i < chunks; i++ {
@@ -102,38 +134,35 @@ func RemoveIDFromIndex(baseKey string, id uint64) {
 		if ptr == nil || *ptr == "" {
 			continue
 		}
-
-		ids := *FromJSON[[]uint64](*ptr, "index "+key)
-		newIds := ids[:0]
+		ids := parseIDs(*ptr)
 		found := false
-
-		for _, e := range ids {
-			if e == id {
+		for j := 0; j < len(ids); j++ {
+			if ids[j] == id {
+				// swap with last element and trim slice
+				ids[j] = ids[len(ids)-1]
+				ids = ids[:len(ids)-1]
 				found = true
-				continue
+				break
 			}
-			newIds = append(newIds, e)
 		}
-
 		if found {
-			sdk.StateSetObject(key, ToJSON(newIds, "index "+key))
+			sdk.StateSetObject(key, formatIDs(ids))
+			return // stop after first removal
 		}
 	}
 }
 
-// collects all IDs across all chunks.
+// GetIDsFromIndex collects all IDs across all chunks (preallocate slice for efficiency).
 func GetIDsFromIndex(baseKey string) []uint64 {
-	all := []uint64{}
 	chunks := getChunkCount(baseKey)
-
+	all := make([]uint64, 0, chunks*maxChunkSize)
 	for i := 0; i < chunks; i++ {
 		key := chunkKey(baseKey, i)
 		ptr := sdk.StateGetObject(key)
 		if ptr == nil || *ptr == "" {
 			continue
 		}
-
-		ids := *FromJSON[[]uint64](*ptr, "index "+key)
+		ids := parseIDs(*ptr)
 		all = append(all, ids...)
 	}
 	return all
@@ -147,7 +176,7 @@ func SliceToIndex(baseKey string, ids []uint64) {
 	}
 
 	chunks := getChunkCount(baseKey)
-	idSet := make(map[uint64]struct{})
+	idSet := make(map[uint64]struct{}, len(ids))
 	for _, id := range ids {
 		idSet[id] = struct{}{}
 	}
@@ -156,32 +185,32 @@ func SliceToIndex(baseKey string, ids []uint64) {
 	for i := 0; i < chunks; i++ {
 		key := chunkKey(baseKey, i)
 		ptr := sdk.StateGetObject(key)
+		if ptr == nil {
+			continue
+		}
+		chunkIds := parseIDs(*ptr)
+		added := false
 
-		var chunkIds []uint64
-		if ptr != nil && *ptr != "" {
-			chunkIds = *FromJSON[[]uint64](*ptr, "index "+key)
+		// remove already existing IDs
+		for _, e := range chunkIds {
+			delete(idSet, e)
+		}
 
-			// build a set of existing IDs to avoid duplicates
-			existing := make(map[uint64]struct{}, len(chunkIds))
-			for _, e := range chunkIds {
-				existing[e] = struct{}{}
+		// append new IDs to fill the chunk
+		for id := range idSet {
+			if len(chunkIds) >= maxChunkSize {
+				break
 			}
+			chunkIds = append(chunkIds, id)
+			delete(idSet, id)
+			added = true
+		}
 
-			// append as many IDs as fit
-			for id := range idSet {
-				if len(chunkIds) >= maxChunkSize {
-					break
-				}
-				if _, ok := existing[id]; !ok {
-					chunkIds = append(chunkIds, id)
-					delete(idSet, id)
-				}
-			}
-
-			sdk.StateSetObject(key, ToJSON(chunkIds, "index "+key))
-			if len(idSet) == 0 {
-				return // all IDs added
-			}
+		if added {
+			sdk.StateSetObject(key, formatIDs(chunkIds))
+		}
+		if len(idSet) == 0 {
+			return
 		}
 	}
 
@@ -196,7 +225,7 @@ func SliceToIndex(baseKey string, ids []uint64) {
 			chunkIds = append(chunkIds, id)
 			delete(idSet, id)
 		}
-		sdk.StateSetObject(key, ToJSON(chunkIds, "index "+key))
+		sdk.StateSetObject(key, formatIDs(chunkIds))
 		chunks++
 	}
 	setChunkCount(baseKey, chunks)

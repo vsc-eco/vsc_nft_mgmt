@@ -22,11 +22,7 @@ func SetMarketContract(address *string) *string {
 	return nil
 }
 
-func getMarketContract() sdk.Address {
+func getMarketContract() *string {
 	contract := sdk.StateGetObject("a:mc")
-	if contract == nil || *contract == "" {
-		sdk.Log("no market adddress set yet")
-		return sdk.Address("")
-	}
-	return sdk.Address(*contract)
+	return contract
 }

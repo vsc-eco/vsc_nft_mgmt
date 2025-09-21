@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
-	"strings"
 	"vsc_nft_mgmt/sdk"
 )
 
@@ -19,10 +18,11 @@ func ToJSON[T any](v T, objectType string) string {
 }
 
 func FromJSON[T any](data string, objectType string) *T {
-	data = strings.TrimSpace(data)
+	// data = strings.TrimSpace(data)
 	var v T
 	if err := json.Unmarshal([]byte(data), &v); err != nil {
-		sdk.Abort("failed to unmarshal " + objectType)
+		sdk.Abort(
+			fmt.Sprintf("failed to unmarshal %s \ninput: %s\nerror: %v", objectType, data, err.Error()))
 	}
 	return &v
 }

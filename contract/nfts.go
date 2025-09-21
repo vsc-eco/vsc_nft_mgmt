@@ -8,7 +8,7 @@ import (
 const (
 	nftVersion         = 1   // for a possible versioning of the nft contract
 	maxMetaKeys        = 25  // maximum count of metadata keys for an nft
-	maxMetaKeyLength   = 50  // maaximum length of a key within the metadata
+	maxMetaKeyLength   = 50  // maximum length of a key within the metadata
 	maxMetaValueLength = 512 // maximum length of a value within the metadata
 	maxEditions        = 100 // maximum editions mintable at once
 )
@@ -21,22 +21,20 @@ type NFT struct {
 	Version        int         `json:"v"`
 	CreationTxID   string      `json:"txID"`
 	Collection     uint64      `json:"c"`
-	SingleTransfer bool        `json:"bound"` // true if the nft can only be transferred once (from creator to another user)
+	SingleTransfer bool        `json:"bound"` // true if the nft can only be transferred once
 	NFTPrefs       *NFTPrefs   `json:"pref,omitempty"`
-	Edition        *NFTEdition `json:"eds,omitempty"`
-
-	// later more "NFT types" are possible like mutables and others
+	Edition        *NFTEdition `json:"eds,omitempty"` // only present for editions
 }
 
 // non-unique nfts have additional edition data
 type NFTEdition struct {
 	EditionNumber  uint32 `json:"no"`
 	EditionsTotal  uint32 `json:"t"`
-	GenesisEdition uint64 `json:"g"` // only the genesis edition will have nftPrefs to save space
+	GenesisEdition uint64 `json:"g"` // only the genesis edition will have nftPrefs
 }
 
 // more complex NFT preferences
-// only get stored on unique nfts and genesis editions to reduce redundance within contract state
+// only stored on unique NFTs and genesis editions to reduce redundant state storage
 type NFTPrefs struct {
 	Description string            `json:"desc"`
 	Metadata    map[string]string `json:"meta,omitempty"`
@@ -51,34 +49,39 @@ type TransferNFTArgs struct {
 type MintNFTArgs struct {
 	Collection     uint64            `json:"c"`     // mandatory: collectionId
 	Name           string            `json:"name"`  // mandatory: name of the nft
-	Description    string            `json:"desc"`  // optional: description of the nft
-	SingleTransfer bool              `json:"bound"` // optional: true if the nft is non-transferrable
-	Metadata       map[string]string `json:"meta"`  // optional: additional metadata for the nft
+	Description    string            `json:"desc"`  // optional: description
+	SingleTransfer bool              `json:"bound"` // optional: true if non-transferrable
+	Metadata       map[string]string `json:"meta"`  // optional: additional metadata
 }
 
 type MintNFTEditionsArgs struct {
 	Collection     uint64            `json:"c"`     // mandatory: collectionId
 	Name           string            `json:"name"`  // mandatory: name of the nft
-	Description    string            `json:"desc"`  // optional: description of the nft
-	SingleTransfer bool              `json:"bound"` // optional: true if the nft is non-transferrable
-	Metadata       map[string]string `json:"meta"`  // optional: additional metadata for the nft
-	EditionsTotal  uint32            `json:"et"`    // mandatory: total count of editions
-	GenesisEdition *uint64           `json:"g"`     // optional: set genesis nft id if editions should be extended
+	Description    string            `json:"desc"`  // optional: description
+	SingleTransfer bool              `json:"bound"` // optional: non-transferrable
+	Metadata       map[string]string `json:"meta"`  // optional: metadata
+	EditionsTotal  uint32            `json:"et"`    // mandatory: total editions to mint
+	GenesisEdition *uint64           `json:"g"`     // optional: existing genesis id to extend editions
 }
 
+// --------------------
 // MINT FUNCTIONS
+// --------------------
 
-// creation of an unique nft
+// creation of a unique NFT
 //
 //go:wasmexport nft_mint_unique
 func MintNFTUnique(payload *string) *string {
 	input := FromJSON[MintNFTArgs](*payload, "minting args")
 	collection := loadCollection(input.Collection)
 	creator := sdk.GetEnvKey("msg.sender")
+
+	// validate input fields
 	validateMintArgs(input.Name, input.Description, input.Metadata, collection.Owner, *creator)
 	nftID := newNFTID()
 	env := sdk.GetEnv()
 
+	// create and save NFT
 	createAndSaveNFT(
 		nftID,
 		sdk.Address(*creator),
@@ -87,21 +90,20 @@ func MintNFTUnique(payload *string) *string {
 		input.Description,
 		input.SingleTransfer,
 		input.Metadata,
-		false, 0, 0, false, // editionedNFT,editionNumber, genesisEditionID, extend editions
+		false, 0, 0, false, // editionedNFT, editionNumber, genesisEditionID, extendEditions
 		env.TxId,
 	)
-	// add nft to index
+
+	// add NFT to indexes: creator and collection
 	AddIDToIndex(NFTsCreator+*creator, nftID)
 	AddIDToIndex(NFTsCollection+UInt64ToString(input.Collection), nftID)
 
-	// increase count
+	// increment global NFT counter
 	setCount(NFTsCount, nftID+1)
 	return nil
 }
 
-// creation of an edition nft
-// the genesis (first) nft of this series will holds potential "big" but redundant data
-// all the following nfts have a property called "genesis" pointing to that genesis nft
+// creation of NFT editions
 //
 //go:wasmexport nft_mint_edition
 func MintNFTEditions(payload *string) *string {
@@ -125,12 +127,15 @@ func MintNFTEditions(payload *string) *string {
 	extendEditions := false
 	var editionIDs []uint64
 
+	// check if we are extending an existing genesis
 	if input.GenesisEdition != nil {
 		genesisEditionID = *input.GenesisEdition
 		extendEditions = true
+		// needed to compute offsets for edition numbering
 		existingEditionsCount = getEditionsCount(genesisEditionID)
 	}
 
+	// create all editions
 	for i := 1; i <= int(input.EditionsTotal); i++ {
 		createAndSaveNFT(
 			nftID+uint64(i),
@@ -146,60 +151,59 @@ func MintNFTEditions(payload *string) *string {
 			extendEditions,
 			*txId,
 		)
-
 		editionIDs = append(editionIDs, nftID+uint64(i))
 	}
 
-	// add genesis to creator index
+	// add genesis to creator index if new
 	if !extendEditions {
 		AddIDToIndex(NFTsCreator+*creator, genesisEditionID)
 	}
-	// batch-add to indices
+
+	// batch-add editions to collection and edition indices (efficient)
 	SliceToIndex(NFTsCollection+UInt64ToString(input.Collection), editionIDs)
 	SliceToIndex(AllEditionsOfGenesis+UInt64ToString(genesisEditionID), editionIDs)
 	SliceToIndex(AvailEditionsOfGenesis+UInt64ToString(genesisEditionID), editionIDs)
-	// increase nft counter
-	setCount(NFTsCount, nftID+uint64(len(editionIDs)))
 
+	// update NFT counter
+	setCount(NFTsCount, nftID+uint64(len(editionIDs)))
 	return nil
 }
 
+// --------------------
 // TRANSFER FUNCTIONS
+// --------------------
 
-// transfers a nft between users and/or collections
-// owner can move between collections
-// market contract or owner can move to new owner
+// transfers an NFT between users or collections
 //
 //go:wasmexport nft_transfer
 func TransferNFT(payload *string) *string {
-
 	input := FromJSON[TransferNFTArgs](*payload, "transfer args")
-	nft := loadNFT(input.NftID)
 
-	// avoid unnecessary non-transfer
+	// lightweight loader that skips EditionsTotal computation for gas savings
+	nft := loadNFTNoCount(input.NftID)
+
+	// prevent no-op transfers
 	if nft.Owner == input.Owner && nft.Collection == input.Collection {
 		sdk.Abort("source and target are the same")
 	}
 
-	caller := sdk.GetEnv().Caller // caller instead of sender to enable other contracts
+	caller := sdk.GetEnvKey("msg.caller")
 	marketContract := getMarketContract()
 
-	// if the nft should move from one user to another
+	// validate transfer permissions
 	if input.Owner != nft.Owner {
-		if caller != marketContract && caller != nft.Owner {
+		if caller != marketContract && *caller != nft.Owner.String() {
 			sdk.Abort("only market or owner can transfer")
 		}
 		if nft.Creator != nft.Owner && nft.SingleTransfer {
-			// nft moved once after mint and is non-transferrable
 			sdk.Abort("nft bound to owner")
 		}
 	} else {
-		// it is a move between collections of the owner
-		if caller != nft.Owner {
+		if *caller != nft.Owner.String() {
 			sdk.Abort("only owner can move")
 		}
 	}
-	// check if the target owner owns the target collection
+
 	collection := loadCollection(input.Collection)
 	if collection.Owner != input.Owner {
 		sdk.Abort("collection not owned by new owner")
@@ -210,38 +214,39 @@ func TransferNFT(payload *string) *string {
 	nft.Owner = input.Owner
 	saveNFT(nft)
 
-	// remove the nft from the source collection index
 	RemoveIDFromIndex(NFTsCollection+UInt64ToString(originalCollection), nft.ID)
-	// add the nft to the target collection index
 	AddIDToIndex(NFTsCollection+UInt64ToString(nft.Collection), nft.ID)
-	// if it is an edition: remove the nft from the list of available editions (if still in there)
+
+	// remove from available editions if applicable
 	if nft.Edition != nil {
 		RemoveIDFromIndex(AvailEditionsOfGenesis+UInt64ToString(nft.Edition.GenesisEdition), nft.ID)
 	}
-	sdk.Log("nft transferred to new owner / moved to other collection")
-	return nil
 
+	return nil
 }
 
+// --------------------
 // GET FUNCTIONS
-// returns an nft for a given nft id
+// --------------------
+
+// returns an NFT by ID, includes EditionsTotal
 //
 //go:wasmexport nft_get
 func GetNFT(id *string) *string {
-	// get one NFT by Id
-	nft := loadNFT(StringToUInt64(id))
+	nft := loadNFTWithCount(StringToUInt64(id))
 	jsonStr := ToJSON(nft, "nft")
 	sdk.Log(jsonStr)
 	return &jsonStr
 }
 
-// returns the next available edition nft still in creators collection for a given genesis nft id
+// returns the next available edition for a given genesis NFT
 //
 //go:wasmexport nft_get_available
 func GetNextAvailableEditionForNFT(id *string) *string {
-	// get all NFT editions related to the genesis NFT
 	nftIds := GetIDsFromIndex(AvailEditionsOfGenesis + *id)
-	// get the smalles nftId
+	if len(nftIds) == 0 {
+		return nil
+	}
 	min := nftIds[0]
 	for _, v := range nftIds[1:] {
 		if v < min {
@@ -252,36 +257,52 @@ func GetNextAvailableEditionForNFT(id *string) *string {
 	return &minStr
 }
 
-// Contract State Interactions
+// --------------------
+// CONTRACT STATE INTERACTIONS
+// --------------------
 
-// stores an nft (minded / updated)
+// store an NFT in state
 func saveNFT(nft *NFT) {
 	key := nftKey(nft.ID)
 	b := ToJSON(nft, "nft")
 	sdk.StateSetObject(key, string(b))
-
 }
 
-// returns a single nft by id
-func loadNFT(id uint64) *NFT {
+// load NFT and compute EditionsTotal
+func loadNFTWithCount(id uint64) *NFT {
+	nft := loadNFTBase(id)
+	if nft.Edition != nil {
+		nft.Edition.EditionsTotal = getEditionsCount(nft.Edition.GenesisEdition)
+	}
+	return nft
+}
+
+// load NFT without computing EditionsTotal (cheaper)
+func loadNFTNoCount(id uint64) *NFT {
+	return loadNFTBase(id)
+}
+
+// core NFT loader
+func loadNFTBase(id uint64) *NFT {
 	key := nftKey(id)
 	ptr := sdk.StateGetObject(key)
 	if ptr == nil || *ptr == "" {
 		sdk.Abort(fmt.Sprintf("nft %d not found", id))
 	}
 	nft := FromJSON[NFT](*ptr, "nft")
-	if nft.Edition != nil {
-		nft.Edition.EditionsTotal = getEditionsCount(id)
-	}
 	return nft
 }
 
-func getEditionsCount(id uint64) uint32 {
-	editionsTotal := GetIDsFromIndex(AllEditionsOfGenesis + UInt64ToString(id))
+// compute editions count from AllEditionsOfGenesis index
+func getEditionsCount(genesisID uint64) uint32 {
+	editionsTotal := GetIDsFromIndex(AllEditionsOfGenesis + UInt64ToString(genesisID))
 	return uint32(len(editionsTotal))
 }
 
-// functions arguments validation
+// --------------------
+// VALIDATION & HELPERS
+// --------------------
+
 func validateMintArgs(
 	name string,
 	description string,
@@ -294,7 +315,6 @@ func validateMintArgs(
 	}
 	if len(name) > maxNameLength {
 		sdk.Abort(fmt.Sprintf("name must between 1 - %d chars", maxNameLength))
-		return
 	}
 	if len(description) > maxDescLength {
 		sdk.Abort(fmt.Sprintf("desc max. %d chars", maxDescLength))
@@ -302,8 +322,6 @@ func validateMintArgs(
 	if collectionOwner.String() != caller {
 		sdk.Abort("not the owner")
 	}
-
-	// check size of the metadata to avoid bloat of the state storage
 	if len(metadata) > maxMetaKeys {
 		sdk.Abort(fmt.Sprintf("meta max. %d keys", maxMetaKeys))
 	}
@@ -320,6 +338,7 @@ func validateMintArgs(
 	}
 }
 
+// create and store NFT in state
 func createAndSaveNFT(
 	nftId uint64,
 	creator sdk.Address,
@@ -334,20 +353,19 @@ func createAndSaveNFT(
 	extendEditions bool,
 	txId string,
 ) {
-
 	var nftEdition *NFTEdition
 	var nftPrefs *NFTPrefs
 
-	// if we mint an nft edition
+	// set edition info if applicable
 	if editionedNFT {
 		nftEdition = &NFTEdition{
 			EditionNumber:  editionNumber,
 			GenesisEdition: genesisEditionID,
 		}
 	}
-	// if it is the first edition, extended editions or a unique nft
+
+	// first edition or unique NFT stores preferences
 	if !editionedNFT || !extendEditions || editionNumber == 1 {
-		// Only genesis edition keeps prefs to avoid redundant state storage
 		nftPrefs = &NFTPrefs{
 			Description: description,
 			Metadata:    metadata,
@@ -366,13 +384,14 @@ func createAndSaveNFT(
 		Edition:        nftEdition,
 	}
 	saveNFT(nft)
-
 }
 
+// generate state key for NFT
 func nftKey(nftId uint64) string {
 	return fmt.Sprintf("n:%d", nftId)
 }
 
+// get next available NFT ID
 func newNFTID() uint64 {
 	return getCount(NFTsCount)
 }

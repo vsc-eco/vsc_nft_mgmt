@@ -70,7 +70,7 @@ There are tests defined under `tests/basic_test.go`for all the important exporte
 This file also uses the getters of the `contract/getters_tests.go` for visualization of the contract state.
 
 You can build a testing build (including the various getter functions) with the following command contrary to the official documentation:
-`tinygo build -gc=custom -scheduler=none -panic=trap -no-debug -target=wasm-unknown -tags=test -o artifacts/main.wasm ./contract`
+`tinygo build -gc=custom -scheduler=none -panic=trap -no-debug -target=wasm-unknown -tags=test -o test/artifacts/main.wasm ./contract`
 
 The tests are designed to run sequencially because the mocking database layer is a single-use-file only.
 For running the tests you imply run `go test -p 1 ./test -v` from within the root. 
