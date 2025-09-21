@@ -107,7 +107,7 @@ func newCollectionID() uint64 {
 
 func emitCreatedEvent(collectionId uint64, createdByAddress string) {
 	sdk.Log(fmt.Sprintf(
-		"Collection|collectionId:%d|by:%s",
+		"CollectionCreated|id:%d|by:%s",
 		collectionId,
 		createdByAddress,
 	))
