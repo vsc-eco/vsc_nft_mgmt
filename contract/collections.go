@@ -78,9 +78,6 @@ func loadCollection(id uint64) *Collection {
 	if ptr == nil || *ptr == "" {
 		sdk.Abort(fmt.Sprintf("collection %d not found", id))
 	}
-	// if id == 2 {
-	// 	sdk.Log(*ptr)
-	// }
 	collection := FromJSON[Collection](*ptr, "collection")
 	return collection
 }

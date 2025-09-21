@@ -63,7 +63,6 @@ func TestMintUniqueNFT(t *testing.T) {
 	CallContract(t, ct, "nft_mint_unique", PayloadToJSON(map[string]any{
 		"c":     0,
 		"name":  "nft name",
-		"desc":  "nft longer description",
 		"bound": true,
 		"meta": map[string]string{
 			"a": "a value",
@@ -181,6 +180,16 @@ func TestMintUniqueNFTFails(t *testing.T) {
 			"y": "cL7mWx",
 			"z": "hF4qRn",
 		},
+	}), nil, "hive:userA", false, uint(100_000_000))
+
+	// mint nft without name
+	CallContract(t, ct, "nft_mint_unique", PayloadToJSON(map[string]any{
+		"c": 0,
+	}), nil, "hive:userA", false, uint(100_000_000))
+
+	// mint nft without collection
+	CallContract(t, ct, "nft_mint_unique", PayloadToJSON(map[string]any{
+		"name": "nft name",
 	}), nil, "hive:userA", false, uint(100_000_000))
 }
 
