@@ -60,7 +60,7 @@ func TestMintUniqueNFT(t *testing.T) {
 		"desc": "collection longer description",
 	}), nil, "hive:someone", true, uint(100_000_000))
 	// mint nft
-	CallContract(t, ct, "nft_mint_unique", PayloadToJSON(map[string]any{
+	CallContract(t, ct, "nft_mint", PayloadToJSON(map[string]any{
 		"c":     0,
 		"name":  "nft name",
 		"bound": true,
@@ -88,7 +88,7 @@ func TestMintUniqueNFTFails(t *testing.T) {
 		"desc": "collection longer description",
 	}), nil, "hive:receiver", true, uint(100_000_000))
 	// mint nft (should fail) - collection not owned my minter
-	CallContract(t, ct, "nft_mint_unique", PayloadToJSON(map[string]any{
+	CallContract(t, ct, "nft_mint", PayloadToJSON(map[string]any{
 		"c":     1,
 		"name":  "nft name",
 		"desc":  "nft longer description",
@@ -100,7 +100,7 @@ func TestMintUniqueNFTFails(t *testing.T) {
 	}), nil, "hive:someone", false, uint(100_000_000))
 
 	// mint nft with character overflows
-	CallContract(t, ct, "nft_mint_unique", PayloadToJSON(map[string]any{
+	CallContract(t, ct, "nft_mint", PayloadToJSON(map[string]any{
 		"c":     0,
 		"name":  "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore e",
 		"desc":  "nft longer description",
@@ -112,7 +112,7 @@ func TestMintUniqueNFTFails(t *testing.T) {
 	}), nil, "hive:someone", false, uint(100_000_000))
 
 	// character overflows
-	CallContract(t, ct, "nft_mint_unique", PayloadToJSON(map[string]any{
+	CallContract(t, ct, "nft_mint", PayloadToJSON(map[string]any{
 		"c":     0,
 		"name":  "nft name",
 		"desc":  "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.",
@@ -125,7 +125,7 @@ func TestMintUniqueNFTFails(t *testing.T) {
 
 	// meadata overflows
 
-	CallContract(t, ct, "nft_mint_unique", PayloadToJSON(map[string]any{
+	CallContract(t, ct, "nft_mint", PayloadToJSON(map[string]any{
 		"c":     0,
 		"name":  "nft name",
 		"desc":  "nft longer description",
@@ -136,7 +136,7 @@ func TestMintUniqueNFTFails(t *testing.T) {
 		},
 	}), nil, "hive:someone", false, uint(100_000_000))
 
-	CallContract(t, ct, "nft_mint_unique", PayloadToJSON(map[string]any{
+	CallContract(t, ct, "nft_mint", PayloadToJSON(map[string]any{
 		"c":     0,
 		"name":  "nft name",
 		"desc":  "nft longer description",
@@ -147,7 +147,7 @@ func TestMintUniqueNFTFails(t *testing.T) {
 		},
 	}), nil, "hive:someone", false, uint(100_000_000))
 
-	CallContract(t, ct, "nft_mint_unique", PayloadToJSON(map[string]any{
+	CallContract(t, ct, "nft_mint", PayloadToJSON(map[string]any{
 		"c":     1,
 		"name":  "nft name",
 		"desc":  "nft longer description",
@@ -183,12 +183,12 @@ func TestMintUniqueNFTFails(t *testing.T) {
 	}), nil, "hive:someone", false, uint(100_000_000))
 
 	// mint nft without name
-	CallContract(t, ct, "nft_mint_unique", PayloadToJSON(map[string]any{
+	CallContract(t, ct, "nft_mint", PayloadToJSON(map[string]any{
 		"c": 0,
 	}), nil, "hive:someone", false, uint(100_000_000))
 
 	// mint nft without collection
-	CallContract(t, ct, "nft_mint_unique", PayloadToJSON(map[string]any{
+	CallContract(t, ct, "nft_mint", PayloadToJSON(map[string]any{
 		"name": "nft name",
 	}), nil, "hive:someone", false, uint(100_000_000))
 }
@@ -201,7 +201,7 @@ func TestBurn(t *testing.T) {
 		"desc": "collection longer description",
 	}), nil, "hive:someone", true, uint(100_000_000))
 	// mint 1 unique nft
-	CallContract(t, ct, "nft_mint_unique", PayloadToJSON(map[string]any{
+	CallContract(t, ct, "nft_mint", PayloadToJSON(map[string]any{
 		"c":     0,
 		"name":  "nft name",
 		"desc":  "nft longer description",
@@ -226,7 +226,7 @@ func TestBurnByMarket(t *testing.T) {
 		"desc": "collection longer description",
 	}), nil, "hive:someone", true, uint(100_000_000))
 	// mint 1 unique nft
-	CallContract(t, ct, "nft_mint_unique", PayloadToJSON(map[string]any{
+	CallContract(t, ct, "nft_mint", PayloadToJSON(map[string]any{
 		"c":     0,
 		"name":  "nft name",
 		"desc":  "nft longer description",
@@ -249,7 +249,7 @@ func TestBurnFails(t *testing.T) {
 		"desc": "collection longer description",
 	}), nil, "hive:someone", true, uint(100_000_000))
 	// mint 1 unique nft
-	CallContract(t, ct, "nft_mint_unique", PayloadToJSON(map[string]any{
+	CallContract(t, ct, "nft_mint", PayloadToJSON(map[string]any{
 		"c":     0,
 		"name":  "nft name",
 		"desc":  "nft longer description",
@@ -272,7 +272,7 @@ func TestMintEditions(t *testing.T) {
 	}), nil, "hive:someone", true, uint(100_000_000))
 
 	// try to mint max nft editions (should succeed)
-	CallContract(t, ct, "nft_mint_edition", PayloadToJSON(map[string]any{
+	CallContract(t, ct, "nft_mint", PayloadToJSON(map[string]any{
 		"c":     0,
 		"name":  "nft name",
 		"desc":  "nft longer description",

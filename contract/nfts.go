@@ -32,6 +32,7 @@ type NFT struct {
 type EditionOverride struct {
 	Owner      sdk.Address `json:"owner"`
 	Collection uint64      `json:"collection"`
+	Burned     bool        `json:"burned"` // true if this edition has been burned
 }
 
 type TransferNFTArgs struct {
@@ -108,6 +109,10 @@ func TransferNFT(payload *string) *string {
 	// Only multi-editions use override
 	if nft.EditionsTotal > 1 {
 		owner, collection = resolveEditionOwnerAndCollection(nft, editionIndex)
+		override := loadEditionOverride(nft.ID, editionIndex)
+		if override != nil && override.Burned {
+			sdk.Abort("cannot transfer a burned edition")
+		}
 	}
 
 	// prevent no-op transfers
@@ -171,7 +176,7 @@ func TransferNFT(payload *string) *string {
 }
 
 func saveEditionOverride(nftID uint64, editionIndex uint32, owner sdk.Address, collection uint64) {
-	key := fmt.Sprintf("o:%d:%d", nftID, editionIndex)
+	key := editionKey(nftID, editionIndex)
 	override := &EditionOverride{
 		Owner:      owner,
 		Collection: collection,
@@ -180,7 +185,7 @@ func saveEditionOverride(nftID uint64, editionIndex uint32, owner sdk.Address, c
 }
 
 func loadEditionOverride(nftID uint64, editionIndex uint32) *EditionOverride {
-	key := fmt.Sprintf("o:%d:%d", nftID, editionIndex)
+	key := editionKey(nftID, editionIndex)
 	ptr := sdk.StateGetObject(key)
 	if ptr == nil || *ptr == "" {
 		return nil
@@ -191,14 +196,63 @@ func loadEditionOverride(nftID uint64, editionIndex uint32) *EditionOverride {
 func resolveEditionOwnerAndCollection(nft *NFT, editionIndex uint32) (sdk.Address, uint64) {
 	override := loadEditionOverride(nft.ID, editionIndex)
 	if override != nil {
+		if override.Burned {
+			sdk.Abort("edition has been burned")
+		}
 		return override.Owner, override.Collection
 	}
 	return nft.Owner, nft.Collection
 }
 
+type BurnEditionArgs struct {
+	NftID        uint64 `json:"id"` // ID of the NFT
+	EditionIndex uint32 `json:"ei"` // index of the edition to burn
+}
+
+//go:wasmexport nft_burn_edition
+func BurnEdition(payload *string) *string {
+	input := FromJSON[BurnEditionArgs](*payload, "burn edition args")
+	nft := loadNFT(input.NftID)
+
+	// Prevent burning genesis
+	if input.EditionIndex == 0 {
+		sdk.Abort("cannot burn genesis edition")
+	}
+
+	// Resolve current owner
+	owner, _ := resolveEditionOwnerAndCollection(nft, input.EditionIndex)
+
+	// Only owner can burn
+	caller := sdk.GetEnvKey("msg.caller")
+	if *caller != owner.String() {
+		sdk.Abort("only owner can burn this edition")
+	}
+
+	// Mark edition as burned
+	override := loadEditionOverride(nft.ID, input.EditionIndex)
+	if override == nil {
+		override = &EditionOverride{
+			Owner:      owner,
+			Collection: nft.Collection,
+		}
+	}
+	override.Burned = true
+	sdk.StateSetObject(editionKey(nft.ID, input.EditionIndex), ToJSON(override, "override"))
+
+	// Emit burn event
+	EmitBurnEvent(
+		UInt64ToString(nft.ID)+":"+strconv.FormatInt(int64(input.EditionIndex), 10), // composite id nft:editionIndex,
+		owner.String(),
+		nft.Collection)
+	return nil
+}
+
 //go:wasmexport nft_burn
 func BurnNFT(id *string) *string {
 	nft := loadNFT(StringToUInt64(id))
+	if nft.EditionsTotal > 1 {
+		sdk.Abort("genesis editions can not be burnt")
+	}
 	caller := sdk.GetEnvKey("msg.caller")
 	marketContract := getMarketContract()
 
@@ -283,47 +337,14 @@ func validateMintArgs(
 	}
 }
 
-// // create and store NFT in state
-// func createAndSaveNFT(
-// 	nftId uint64,
-// 	creator sdk.Address,
-// 	owner sdk.Address,
-// 	collection uint64,
-// 	name string,
-// 	description string,
-// 	singleTransfer bool,
-// 	metadata map[string]string,
-// 	genesisEditionID *uint64,
-// 	txId string,
-// ) {
-// 	var nftPrefs *NFTPrefs
-
-// 	// first edition or unique NFT stores preferences
-// 	if genesisEditionID == nil || *genesisEditionID == nftId {
-// 		nftPrefs = &NFTPrefs{
-// 			Name:           name,
-// 			Description:    description,
-// 			Metadata:       metadata,
-// 			SingleTransfer: singleTransfer,
-// 		}
-// 	}
-
-// 	nft := &NFT{
-// 		ID:             nftId,
-// 		Creator:        creator,
-// 		Owner:          owner,
-// 		Version:        nftVersion,
-// 		CreationTxID:   txId,
-// 		Collection:     collection,
-// 		NFTPrefs:       nftPrefs,
-// 		GenesisEdition: genesisEditionID,
-// 	}
-// 	saveNFT(nft)
-// }
-
 // generate state key for NFT
 func nftKey(nftId uint64) string {
 	return "n:" + strconv.FormatUint(nftId, 10)
+}
+
+// generate state key for ieditoon overrides
+func editionKey(nftID uint64, editionIndex uint32) string {
+	return fmt.Sprintf("o:%d:%d", nftID, editionIndex)
 }
 
 // get next available NFT ID

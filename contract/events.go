@@ -46,9 +46,9 @@ func EmitMintEvent(nftID uint64, mintedByAddress, receiverAddress string, collec
 }
 
 // EmitBurnEvent emits a burn event.
-func EmitBurnEvent(nftID uint64, ownerAddress string, collection uint64) {
+func EmitBurnEvent(nftID string, ownerAddress string, collection uint64) {
 	emitEvent("burn", map[string]string{
-		"id":         UInt64ToString(nftID),
+		"id":         nftID,
 		"by":         ownerAddress,
 		"collection": UInt64ToString(collection),
 	})
