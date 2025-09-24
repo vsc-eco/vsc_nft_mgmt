@@ -265,7 +265,7 @@ func BurnNFT(id *string) *string {
 	sdk.StateDeleteObject(nftKey(nft.ID))
 
 	// emit burn event
-	EmitBurnEvent(nft.ID, nft.Owner.String(), nft.Collection)
+	EmitBurnEvent(UInt64ToString(nft.ID), nft.Owner.String(), nft.Collection)
 	return nil
 }
 
