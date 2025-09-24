@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strconv"
 	"vsc_nft_mgmt/sdk"
 )
 
@@ -20,9 +21,9 @@ func emitEvent(eventType string, attributes map[string]string) {
 }
 
 // EmitTransferEvent emits a transfer event.
-func EmitTransferEvent(nftID uint64, fromAddress, toAddress string, fromCollection, toCollection uint64) {
+func EmitTransferEvent(nftID string, fromAddress, toAddress string, fromCollection, toCollection uint64) {
 	emitEvent("transfer", map[string]string{
-		"id":             UInt64ToString(nftID),
+		"id":             nftID,
 		"from":           fromAddress,
 		"to":             toAddress,
 		"fromCollection": UInt64ToString(fromCollection),
@@ -31,15 +32,15 @@ func EmitTransferEvent(nftID uint64, fromAddress, toAddress string, fromCollecti
 }
 
 // EmitMintEvent emits a mint event.
-func EmitMintEvent(nftID uint64, mintedByAddress, receiverAddress string, collection uint64, genesisNFTID *uint64) {
+func EmitMintEvent(nftID uint64, mintedByAddress, receiverAddress string, collection uint64, editionsTotal uint32) {
 	attrs := map[string]string{
 		"id":           UInt64ToString(nftID),
 		"by":           mintedByAddress,
 		"to":           receiverAddress,
 		"toCollection": UInt64ToString(collection),
 	}
-	if genesisNFTID != nil {
-		attrs["genesisID"] = UInt64ToString(*genesisNFTID)
+	if editionsTotal > 0 {
+		attrs["editionsTotal"] = strconv.FormatInt(int64(editionsTotal), 10)
 	}
 	emitEvent("mint", attrs)
 }

@@ -3,12 +3,13 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"vsc_nft_mgmt/sdk"
 )
 
 const (
-	maxNameLength = 100  // maximum length if the name attribute (used by collections and nfts)
-	maxDescLength = 1000 // maximum length if the description attribute (used by collections and nfts)
+	maxNameLength = 100  // maximum length for names (used by collections and nfts)
+	maxDescLength = 1000 // maximum length for descriptions (used by collections and nfts)
 )
 
 type Collection struct {
@@ -87,15 +88,15 @@ func (c *CreateCollectionArgs) Validate() {
 		sdk.Abort("name is mandatory")
 	}
 	if len(c.Name) > maxNameLength {
-		sdk.Abort(fmt.Sprintf("name: max %d chars", maxNameLength))
+		sdk.Abort("name too long")
 	}
 	if len(c.Description) > maxDescLength {
-		sdk.Abort(fmt.Sprintf("desc: max %d chars", maxDescLength))
+		sdk.Abort("description too long")
 	}
 }
 
 func collectionKey(collectionId uint64) string {
-	return fmt.Sprintf("c:%d", collectionId)
+	return "c:" + strconv.FormatUint(collectionId, 10)
 }
 
 func newCollectionID() uint64 {
