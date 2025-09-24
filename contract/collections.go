@@ -66,7 +66,7 @@ func saveCollection(collection *Collection) error {
 	// save collection itself
 	idKey := collectionKey(collection.ID)
 	sdk.StateSetObject(idKey, string(b))
-	emitCreatedEvent(collection.ID, collection.Owner.String())
+	EmitCollectionCreatedEvent(collection.ID, collection.Owner.String())
 	// increase global collection counter
 	setCount(CollectionCount, collection.ID+uint64(1))
 	return nil
@@ -100,12 +100,4 @@ func collectionKey(collectionId uint64) string {
 
 func newCollectionID() uint64 {
 	return getCount(CollectionCount)
-}
-
-func emitCreatedEvent(collectionId uint64, createdByAddress string) {
-	sdk.Log(fmt.Sprintf(
-		"CollectionCreated|id:%d|by:%s",
-		collectionId,
-		createdByAddress,
-	))
 }

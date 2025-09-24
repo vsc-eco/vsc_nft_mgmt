@@ -90,7 +90,7 @@ func MintNFTUnique(payload *string) *string {
 		env.TxId,
 	)
 
-	emitMintEvent(nftID, *creator, *creator, *input.Collection, nil)
+	EmitMintEvent(nftID, *creator, *creator, *input.Collection, nil)
 
 	// increment global NFT counter
 	setCount(NFTsCount, nftID+1)
@@ -144,7 +144,7 @@ func MintNFTEditions(payload *string) *string {
 			&genesisEditionID,
 			*txId,
 		)
-		emitMintEvent(nftID+uint64(i), *creator, *creator, *input.Collection, &genesisEditionID)
+		EmitMintEvent(nftID+uint64(i), *creator, *creator, *input.Collection, &genesisEditionID)
 	}
 
 	// update NFT counter
@@ -195,7 +195,7 @@ func TransferNFT(payload *string) *string {
 	nft.Owner = input.Owner
 	saveNFT(nft)
 
-	emitTransferEvent(nft.ID, original.Owner.String(), nft.Owner.String(), original.Collection, nft.Collection)
+	EmitTransferEvent(nft.ID, original.Owner.String(), nft.Owner.String(), original.Collection, nft.Collection)
 
 	return nil
 }
@@ -215,7 +215,7 @@ func BurnNFT(id *string) *string {
 	sdk.StateDeleteObject(nftKey(nft.ID))
 
 	// emit burn event
-	emitBurnEvent(nft.ID, nft.Owner.String(), nft.Collection)
+	EmitBurnEvent(nft.ID, nft.Owner.String(), nft.Collection)
 	return nil
 }
 
@@ -333,40 +333,4 @@ func nftKey(nftId uint64) string {
 // get next available NFT ID
 func newNFTID() uint64 {
 	return getCount(NFTsCount)
-}
-
-func emitTransferEvent(nftId uint64, fromAddress string, toAddress string, fromCollection uint64, toCollection uint64) {
-	sdk.Log(fmt.Sprintf(
-		"Transfer|id:%d|from:%s|to:%s|fromCollection:%d|toCollection:%d",
-		nftId,
-		fromAddress,
-		toAddress,
-		fromCollection,
-		toCollection,
-	))
-}
-
-func emitMintEvent(nftId uint64, mindedByAddress string, receiverAddress string, collection uint64, genesisNFTID *uint64) {
-	event := fmt.Sprintf(
-		"Mint|id:%d|by:%s|to:%s|collection:%d",
-		nftId,
-		mindedByAddress,
-		receiverAddress,
-		collection,
-	)
-
-	if genesisNFTID != nil {
-		event += fmt.Sprintf("|genesis:%d", *genesisNFTID)
-	}
-
-	sdk.Log(event)
-}
-
-func emitBurnEvent(nftId uint64, ownerAddress string, collection uint64) {
-	sdk.Log(fmt.Sprintf(
-		"Burn|id:%d|owner:%s|collection:%d",
-		nftId,
-		ownerAddress,
-		collection,
-	))
 }
