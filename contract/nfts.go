@@ -3,11 +3,12 @@ package main
 import (
 	"fmt"
 	"strconv"
+	"strings"
 	"vsc_nft_mgmt/sdk"
 )
 
 const (
-	nftVersion         = 1   // for a possible versioning of the nft contract
+	nftVersion         = 1   // for a potential versioning of the nft contract
 	maxMetaKeys        = 25  // max count of metadata keys for an nft
 	maxMetaKeyLength   = 50  // max length of a key within the metadata
 	maxMetaValueLength = 512 // max length of a value within the metadata
@@ -24,7 +25,7 @@ type NFT struct {
 	Description    string            `json:"d"`            // long description of the nft
 	Metadata       map[string]string `json:"m,omitempty"`  // additional metadata like properties, uri and more
 	SingleTransfer bool              `json:"b"`            // true if the nft can only be transferred once
-	EditionsTotal  uint32            `json:"et,omitempty"` // total number of editions (only set on genesis)
+	EditionsTotal  uint32            `json:"et,omitempty"` // total number of editions
 	Version        int               `json:"v"`            // version of the nft contract this nft was minted with
 }
 
@@ -32,11 +33,11 @@ type NFT struct {
 type EditionOverride struct {
 	Owner      sdk.Address `json:"owner"`
 	Collection uint64      `json:"collection"`
-	Burned     bool        `json:"burned"` // true if this edition has been burned
+	Burned     bool        `json:"burned"`
 }
 
 type TransferNFTArgs struct {
-	NftID      uint64      `json:"id"` // mandatory: id of the nft to get transferred
+	NftID      string      `json:"id"` // mandatory: id of the nft or edition to get transferred
 	Collection uint64      `json:"c"`  // mandatory: target collection
 	Owner      sdk.Address `json:"o"`  // mandatory: target owner
 }
@@ -50,10 +51,14 @@ type MintNFTArgs struct {
 	EditionsTotal  uint32            `json:"et"`    // mandatory: number editions to mint
 }
 
+type NFTResponse struct {
+	*NFT
+	EditionIndex *uint32 `json:"editionIndex,omitempty"`
+	Burned       bool    `json:"burned,omitempty"`
+}
+
 // MINT FUNCTIONS
 
-// creation of NFT
-//
 //go:wasmexport nft_mint
 func MintNFT(payload *string) *string {
 	input := FromJSON[MintNFTArgs](*payload, "minting args")
@@ -87,35 +92,50 @@ func MintNFT(payload *string) *string {
 	}
 	saveNFT(nft)
 
+	// emit mint event for base NFT
 	EmitMintEvent(nftID, *creator, *creator, *input.Collection, et)
 
-	// update NFT counter
+	// TODO: maybe emit events for each edition?
+
 	setCount(NFTsCount, nftID+uint64(1))
 	return nil
 }
 
 // TRANSFER FUNCTIONS
 
-// transfers an NFT between users or collections
-//
 //go:wasmexport nft_transfer
 func TransferNFT(payload *string) *string {
 	input := FromJSON[TransferNFTArgs](*payload, "transfer args")
+	if input.Owner == "" {
+		sdk.Abort("owner is mandatory")
+	}
 
-	nft := loadNFT(input.NftID)
-	editionIndex := uint32(0) // default for single NFTs
-	owner, collection := nft.Owner, nft.Collection
+	nftID, editionIndex := parseNFTCompositeID(input.NftID)
+	nft := loadNFT(nftID)
 
-	// Only multi-editions use override
-	if nft.EditionsTotal > 1 {
-		owner, collection = resolveEditionOwnerAndCollection(nft, editionIndex)
-		override := loadEditionOverride(nft.ID, editionIndex)
-		if override != nil && override.Burned {
-			sdk.Abort("cannot transfer a burned edition")
+	// validate edition index
+	if editionIndex != nil {
+		if nft.EditionsTotal == 1 {
+			sdk.Abort("NFT has no editions")
+		}
+		if *editionIndex >= nft.EditionsTotal {
+			sdk.Abort("edition index out of range")
 		}
 	}
 
-	// prevent no-op transfers
+	ei := uint32(0)
+	if editionIndex != nil {
+		ei = *editionIndex
+	}
+
+	owner, collection := nft.Owner, nft.Collection
+
+	// For multi-editions, resolve overrides
+	if nft.EditionsTotal > 1 && ei > 0 {
+		owner, collection = resolveEditionOwnerAndCollection(nft, ei)
+	}
+
+	// prevent no-op
 	if owner == input.Owner && collection == input.Collection {
 		sdk.Abort("source and target are the same")
 	}
@@ -126,8 +146,7 @@ func TransferNFT(payload *string) *string {
 	marketContract := getMarketContract()
 	targetCollection := loadCollection(input.Collection)
 
-	// validations
-	// Owner transfer
+	// Owner transfer validation
 	if owner != input.Owner {
 		if *caller != *marketContract && *caller != owner.String() {
 			sdk.Abort("only market or owner can transfer")
@@ -135,31 +154,36 @@ func TransferNFT(payload *string) *string {
 		if nft.SingleTransfer && nft.Creator != owner {
 			sdk.Abort("nft bound to owner")
 		}
+		if targetCollection.Owner != input.Owner {
+			sdk.Abort("target collection not owned by new owner " + input.Owner.String())
+		}
 	}
 
-	// Collection-only transfers
+	// Collection-only transfer
 	if collectionOnlyChange {
-		if *caller != owner.String() {
-			sdk.Abort("only NFT owner can change collection")
+		if *caller != *marketContract && *caller != owner.String() {
+			sdk.Abort("only NFT owner or market can change collection")
 		}
 		if targetCollection.Owner != input.Owner {
-			sdk.Abort("target collection not owned by caller")
+			sdk.Abort("target collection not owned by new owner ")
 		}
 	}
 
 	// Update ownership
 	if nft.EditionsTotal > 1 {
-		// For multi-editions, store override
-		saveEditionOverride(nft.ID, editionIndex, input.Owner, input.Collection)
+		// per-edition override
+		saveEditionOverride(nft.ID, ei, input.Owner, input.Collection)
 
 		EmitTransferEvent(
-			UInt64ToString(nft.ID)+":"+strconv.FormatInt(int64(editionIndex), 10), // composite id nft:editionIndex
+			UInt64ToString(nft.ID)+":"+strconv.FormatInt(int64(ei), 10),
 			owner.String(),
 			input.Owner.String(),
 			nft.Collection,
-			input.Collection)
+			input.Collection,
+		)
+
 	} else {
-		// Unique NFT transfer
+		// unique NFT
 		nft.Owner = input.Owner
 		nft.Collection = input.Collection
 		saveNFT(nft)
@@ -169,10 +193,128 @@ func TransferNFT(payload *string) *string {
 			owner.String(),
 			nft.Owner.String(),
 			collection,
-			nft.Collection)
+			nft.Collection,
+		)
 	}
 
 	return nil
+}
+
+// BURN FUNCTIONS
+
+//go:wasmexport nft_burn
+func Burn(nftId *string) *string {
+	nftID, editionIndex := parseNFTCompositeID(*nftId)
+	nft := loadNFT(nftID)
+
+	// validate edition index
+	if nft.EditionsTotal > 1 && editionIndex == nil {
+		tmp := uint32(0)
+		editionIndex = &tmp
+	}
+
+	// Burn edition
+	if editionIndex != nil {
+		if *editionIndex >= nft.EditionsTotal {
+			sdk.Abort("edition index out of range")
+		}
+		if nft.EditionsTotal == 1 {
+			sdk.Abort("NFT has no editions")
+		}
+		ei := *editionIndex
+		owner, _ := resolveEditionOwnerAndCollection(nft, ei)
+		caller := sdk.GetEnvKey("msg.caller")
+		if *caller != owner.String() {
+			sdk.Abort("only owner can burn this edition")
+		}
+
+		override := loadEditionOverride(nftID, ei)
+		if override == nil {
+			override = &EditionOverride{
+				Owner:      owner,
+				Collection: nft.Collection,
+			}
+		}
+		override.Burned = true
+		sdk.StateSetObject(editionKey(nftID, ei), ToJSON(override, "override"))
+
+		EmitBurnEvent(
+			UInt64ToString(nftID)+":"+strconv.FormatInt(int64(ei), 10),
+			owner.String(),
+			nft.Collection,
+		)
+		return nil
+	}
+
+	// Burn full NFT (unique)
+
+	caller := sdk.GetEnvKey("msg.caller")
+	marketContract := getMarketContract()
+	if *caller != *marketContract && *caller != nft.Owner.String() {
+		sdk.Abort("only owner or market can burn")
+	}
+
+	sdk.StateDeleteObject(nftKey(nft.ID))
+	EmitBurnEvent(UInt64ToString(nft.ID), nft.Owner.String(), nft.Collection)
+	return nil
+}
+
+// GET FUNCTIONS
+
+func parseNFTCompositeID(id string) (uint64, *uint32) {
+	id = strings.TrimSpace(id)
+	if strings.Contains(id, ":") {
+		parts := strings.SplitN(id, ":", 2)
+		parts[0] = strings.TrimSpace(parts[0])
+		parts[1] = strings.TrimSpace(parts[1])
+		nftID := StringToUInt64(&parts[0])
+		editionIdx64, err := strconv.ParseUint(parts[1], 10, 32)
+		if err != nil {
+			sdk.Abort("invalid edition index")
+		}
+		ei := uint32(editionIdx64)
+		return nftID, &ei
+	}
+	return StringToUInt64(&id), nil
+}
+
+//go:wasmexport nft_get
+func GetNFT(id *string) *string {
+	nftID, editionIndex := parseNFTCompositeID(*id)
+	nft := loadNFT(nftID)
+
+	resp := &NFTResponse{NFT: nft}
+
+	if editionIndex != nil && nft.EditionsTotal > 1 {
+		ei := *editionIndex
+		resp.EditionIndex = &ei
+
+		override := loadEditionOverride(nftID, ei)
+		if override != nil {
+			resp.Owner = override.Owner
+			resp.Collection = override.Collection
+			resp.Burned = override.Burned
+		}
+	}
+
+	jsonStr := ToJSON(resp, "nft")
+	return &jsonStr
+}
+
+// CONTRACT STATE INTERACTIONS
+
+func saveNFT(nft *NFT) {
+	key := nftKey(nft.ID)
+	sdk.StateSetObject(key, ToJSON(nft, "nft"))
+}
+
+func loadNFT(id uint64) *NFT {
+	key := nftKey(id)
+	ptr := sdk.StateGetObject(key)
+	if ptr == nil || *ptr == "" {
+		sdk.Abort(fmt.Sprintf("nft %d not found", id))
+	}
+	return FromJSON[NFT](*ptr, "nft")
 }
 
 func saveEditionOverride(nftID uint64, editionIndex uint32, owner sdk.Address, collection uint64) {
@@ -202,102 +344,6 @@ func resolveEditionOwnerAndCollection(nft *NFT, editionIndex uint32) (sdk.Addres
 		return override.Owner, override.Collection
 	}
 	return nft.Owner, nft.Collection
-}
-
-type BurnEditionArgs struct {
-	NftID        uint64 `json:"id"` // ID of the NFT
-	EditionIndex uint32 `json:"ei"` // index of the edition to burn
-}
-
-//go:wasmexport nft_burn_edition
-func BurnEdition(payload *string) *string {
-	input := FromJSON[BurnEditionArgs](*payload, "burn edition args")
-	nft := loadNFT(input.NftID)
-
-	// Prevent burning genesis
-	if input.EditionIndex == 0 {
-		sdk.Abort("cannot burn genesis edition")
-	}
-
-	// Resolve current owner
-	owner, _ := resolveEditionOwnerAndCollection(nft, input.EditionIndex)
-
-	// Only owner can burn
-	caller := sdk.GetEnvKey("msg.caller")
-	if *caller != owner.String() {
-		sdk.Abort("only owner can burn this edition")
-	}
-
-	// Mark edition as burned
-	override := loadEditionOverride(nft.ID, input.EditionIndex)
-	if override == nil {
-		override = &EditionOverride{
-			Owner:      owner,
-			Collection: nft.Collection,
-		}
-	}
-	override.Burned = true
-	sdk.StateSetObject(editionKey(nft.ID, input.EditionIndex), ToJSON(override, "override"))
-
-	// Emit burn event
-	EmitBurnEvent(
-		UInt64ToString(nft.ID)+":"+strconv.FormatInt(int64(input.EditionIndex), 10), // composite id nft:editionIndex,
-		owner.String(),
-		nft.Collection)
-	return nil
-}
-
-//go:wasmexport nft_burn
-func BurnNFT(id *string) *string {
-	nft := loadNFT(StringToUInt64(id))
-	if nft.EditionsTotal > 1 {
-		sdk.Abort("genesis editions can not be burnt")
-	}
-	caller := sdk.GetEnvKey("msg.caller")
-	marketContract := getMarketContract()
-
-	// validate burning permissions
-	if *caller != *marketContract && *caller != nft.Owner.String() {
-		sdk.Abort("only owner or market can burn")
-	}
-
-	// delete the NFT from state
-	sdk.StateDeleteObject(nftKey(nft.ID))
-
-	// emit burn event
-	EmitBurnEvent(UInt64ToString(nft.ID), nft.Owner.String(), nft.Collection)
-	return nil
-}
-
-// GET FUNCTIONS
-
-// returns an NFT by ID, includes EditionsTotal
-//
-//go:wasmexport nft_get
-func GetNFT(id *string) *string {
-	nft := loadNFT(StringToUInt64(id))
-	jsonStr := ToJSON(nft, "nft")
-	return &jsonStr
-}
-
-// CONTRACT STATE INTERACTIONS
-
-// store an NFT in state
-func saveNFT(nft *NFT) {
-	key := nftKey(nft.ID)
-	b := ToJSON(nft, "nft")
-	sdk.StateSetObject(key, string(b))
-}
-
-// NFT loader
-func loadNFT(id uint64) *NFT {
-	key := nftKey(id)
-	ptr := sdk.StateGetObject(key)
-	if ptr == nil || *ptr == "" {
-		sdk.Abort(fmt.Sprintf("nft %d not found", id))
-	}
-	nft := FromJSON[NFT](*ptr, "nft")
-	return nft
 }
 
 // VALIDATION & HELPERS
@@ -337,17 +383,14 @@ func validateMintArgs(
 	}
 }
 
-// generate state key for NFT
 func nftKey(nftId uint64) string {
 	return "n:" + strconv.FormatUint(nftId, 10)
 }
 
-// generate state key for ieditoon overrides
 func editionKey(nftID uint64, editionIndex uint32) string {
 	return fmt.Sprintf("o:%d:%d", nftID, editionIndex)
 }
 
-// get next available NFT ID
 func newNFTID() uint64 {
 	return getCount(NFTsCount)
 }
