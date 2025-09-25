@@ -9,18 +9,22 @@ enabling various nft related functionalities.
 ## 📖 Overview
 
 -   **Language:** Go (Golang) 1.23.2+
--   **Purpose:** Provides basic functions to create collections and minting nfts
+-   **Purpose:** Provides basic functions to create collections, minting, transferring and burning nfts
 
 
 ## 📖 Schema
 
-Each Adress can have multiple collections. In each collection can be included multiple NFTs. There are Edition NFTs that are a series of nfts. The first one of these series are called "genesis edition". Every NFT can be transferred no matter if they are unique, genesis or editions.
+Each Adress can have multiple collections. In each collection can be included multiple NFTs.
+There are editioned NFTs that are a sets of similar nfts and each edition is not stored as separate nft object.
+Every NFT can be transferred and burned no matter if they are unique or editions.
 
 - Collection (Id 123)
     - unique NFT (Id 42)
-    - Edition NFTs aka "Genesis Edition" (Id 43)
-        - Edition 2 (Id 44)
-        - Edition 3 (Id 45)
+    - Editioned NFT (Id 43)
+        - Edition 0 (Id 43:0)
+        - Edition 1 (Id 43:1)
+        - Edition 2 (Id 43:2)
+        - Edition 3 (Id 43:3)
         - ...
     - unique NFT (Id 101)
     - ...
@@ -36,6 +40,7 @@ Each Adress can have multiple collections. In each collection can be included mu
     ├── contract/
     │   └── admin.go // administrative functions
     │   └── collections.go // functions for creating and getting collection data
+    │   └── events.go // event emitting functions for off-chain indexers
     │   └── helpers.go // various utility functions
     │   └── main.go // placeholder
     │   └── nfts.go // functions related to nfts like minting, transferring and getting nft data
@@ -46,7 +51,11 @@ Each Adress can have multiple collections. In each collection can be included mu
     │   └── asset.go
     │   └── env.go        
     │   └── sdk.go    
+    ├── test/
+    │   └── basic_test.go // various tests
+    │   └── helpers_test.go // helpers for the tests
     ├── go.mod
+    ├── go.sum
     ├── readme.md
 
 
@@ -70,7 +79,7 @@ You can build a testing build with the following command contrary to the officia
 `tinygo build -gc=custom -scheduler=none -panic=trap -no-debug -target=wasm-unknown -tags=test -o test/artifacts/main.wasm ./contract`
 
 The tests are designed to run sequencially because the mocking database layer is a single-use-file only.
-For running the tests you imply run `go test -p 1 ./test -v` from within the root. 
+For running the tests you simply run `go test -p 1 ./test -v` from within the root. 
 
 You should see a PASS at the end. If not there is at least one tests that failed:
 ```
@@ -102,20 +111,21 @@ Creates a collection for the sending address.
 payload: 
 ```json5
 {
-    "name": "Trasure Chest", // mandatory: name of the collection
-    "description": "All my NFTs" // optional: description of the collection
+    "name": "Trasure Chest", // mandatory: name of the collection (max 100 characters)
+    "description": "All my NFTs" // optional: description of the collection (max 1000 characters)
 }
 ```
 
 
-#### Mint Unique NFT
+#### Mint NFT
 
-action: `nft_mint_unique`
-Creates a **unique** NFT.
+action: `nft_mint`
+Creates a **unique** or **editioned** NFT.
 
+**unique:**
 ```json5
 {
-  "col": "123", // mandatory: target collection ID
+  "c": "123", // mandatory: target collection ID
   "name": "Golden Sword", // mandatory: name of the NFT
   "desc": "A legendary one-of-a-kind sword", // optional: description
   "bound": false, // optional: true = can be transferred only once from creator (/)defaults to false)
@@ -127,26 +137,21 @@ Creates a **unique** NFT.
 }
 ```
 
-#### Mint Editioned NFT
-action: `nft_mint_edition`
-Creates **editions** of NFTs.
+**editioned with 10 editions:**
 ```json5
 {
-  "col": "123", // mandatory: target collection ID
-  "name": "Silver Shield", // mandatory: name of the NFT
-  "desc": "Limited edition silver shield", // optional: description stored only on genesis
-  "bound": false, // optional: true = can be transferred only once from creator 
-  "meta": { // optional: metadata (applied to genesis to avoid redundancy)
-    "rarity": "rare",
-    "defense": "200"
+  "c": "123", // mandatory: target collection ID
+  "name": "Golden Sword", // mandatory: name of the NFT
+  "desc": "A legendary one-of-a-kind sword", // optional: description
+  "bound": false, // optional: true = can be transferred only once from creator (/)defaults to false)
+  "meta": { // optional: metadata key-value pairs
+    "rarity": "legendary",
+    "attack": "150",
+    "durability": "unbreakable"
   },
-  "editions": 10, // mandatory: total number of editions (> 0) max 100
-  "g": 10, // optional: genesis edition if the series should get extended
-
+  "et":10
 }
 ```
-
-If `g` is set then `name, description, bound, meta` will get ignored. `Name` is still mandatory.
 
 #### Transfer NFT
 action: `nft_transfer`
