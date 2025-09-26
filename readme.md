@@ -197,10 +197,10 @@ Each log is represented by an `Event` object with two main fields:
 All events are logged via the internal `emitEvent` helper, which serializes them to JSON and passes them to `sdk.Log`.
 
 As we support unique nfts and editioned nfts the nft identifier could be in 2 different formats:
-| NFT Type |NFT Identifier | Description |
-|------------|----------------|-------------------|-------------|
-| Unique NFT | "123" |  Actual NFT Id |
-| Editioned NFT | "124:10" | Composite Id containing NFT Id (124) and edition index (10) |
+| NFT Type | NFT Identifier | Description                                                 |
+|---------------|-----------|-------------------------------------------------------------|
+| Unique NFT    | "123"     | Actual NFT Id                                               |
+| Editioned NFT | "124:10"  | Composite Id containing NFT Id (124) and edition index (10) |
 
 Addressing the identifier as "124" if the nft itself is edition-based the contract will automatically assume edition #0 is meant.
 
