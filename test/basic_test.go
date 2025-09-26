@@ -5,37 +5,50 @@ import (
 )
 
 // admin tests
-func TestSetAdminAdressFromWrongAddress(t *testing.T) {
-	CallContract(t, SetupContractTest(), "admin_set_market", PayloadToJSON("hive:tibfox"), nil, "hive:tibfox", false, uint(10_000))
-}
-
-func TestSetAdminAdressFEmptyAddress(t *testing.T) {
-	CallContract(t, SetupContractTest(), "admin_set_market", PayloadToJSON(""), nil, "hive:firstUser", false, uint(1_000))
-}
-
-func TestSetAdminAdressFromCorrectAddress(t *testing.T) {
-	CallContract(t, SetupContractTest(), "admin_set_market", PayloadToJSON("hive:tibfox"), nil, "hive:tibfox.vsc", true, uint(10_000_000))
+func TestAdminMarket(t *testing.T) {
+	ct := SetupContractTest()
+	CallContract(t, ct, "set_market", PayloadToJSON("hive:tibfox"), nil, "hive:tibfox", false, uint(10_000))
+	CallContract(t, ct, "set_market", PayloadToJSON(""), nil, "hive:someone", false, uint(1_000))
+	CallContract(t, ct, "set_market", PayloadToJSON("hive:tibfox"), nil, "hive:contractowner", true, uint(10_000_000))
+	CallContract(t, ct, "get_market", PayloadToJSON(""), nil, "hive:contractowner", true, uint(10_000_000))
 }
 
 // collection tests
 
-func TestCreateCollection(t *testing.T) {
+func TestColCreate(t *testing.T) {
 	// just create a collection
 	CallContract(t, SetupContractTest(), "col_create", PayloadToJSON(map[string]string{
-		"name": "my cool collection",
-		"desc": "description of my cool collection",
-	}), nil, "hive:firstUser", true, uint(100_000_000))
+		"name": "collection name",
+		"desc": "collection longer description",
+	}), nil, "hive:someone", true, uint(100_000_000))
 }
 
-func TestCreateAndGetCollection(t *testing.T) {
+func TestColCreateFails(t *testing.T) {
+	// just create a collection
+	CallContract(t, SetupContractTest(), "col_create", PayloadToJSON(map[string]string{
+		"name": "",
+		"desc": "collection longer description",
+	}), nil, "hive:someone", false, uint(100_000_000))
+
+	CallContract(t, SetupContractTest(), "col_create", PayloadToJSON(map[string]string{
+		"name": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore e",
+		"desc": "collection longer description",
+	}), nil, "hive:someone", false, uint(100_000_000))
+
+	CallContract(t, SetupContractTest(), "col_create", PayloadToJSON(map[string]string{
+		"name": "collection name",
+		"desc": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.",
+	}), nil, "hive:someone", false, uint(100_000_000))
+
+}
+
+func TestColCreateAndGet(t *testing.T) {
 	ct := SetupContractTest()
 	// create a collection
 	CallContract(t, ct, "col_create", PayloadToJSON(map[string]string{
-		"name": "my cool collection",
-		"desc": "description of my cool collection",
-	}), nil, "hive:firstUser", true, uint(100_000_000))
-	// get all collections of user
-	CallContract(t, ct, "col_get_user", PayloadToJSON("hive:firstUser"), nil, "hive:firstUser", true, uint(100_000_000))
+		"name": "collection name",
+		"desc": "collection longer description",
+	}), nil, "hive:someone", true, uint(100_000_000))
 }
 
 // nft tests
@@ -43,348 +56,410 @@ func TestMintUniqueNFT(t *testing.T) {
 	ct := SetupContractTest()
 	// create a collection
 	CallContract(t, ct, "col_create", PayloadToJSON(map[string]string{
-		"name": "my cool collection",
-		"desc": "description of my cool collection",
-	}), nil, "hive:firstUser", true, uint(100_000_000))
+		"name": "collection name",
+		"desc": "collection longer description",
+	}), nil, "hive:someone", true, uint(100_000_000))
 	// mint nft
-	CallContract(t, ct, "nft_mint_unique", PayloadToJSON(map[string]any{
+	CallContract(t, ct, "nft_mint", PayloadToJSON(map[string]any{
 		"c":     0,
-		"name":  "my first nft",
-		"desc":  "some description",
+		"name":  "nft name",
 		"bound": true,
 		"meta": map[string]string{
-			"foo":   "bar",
-			"hello": "world",
+			"a": "a value",
+			"b": "b value",
 		},
-	}), nil, "hive:firstUser", true, uint(100_000_000))
+	}), nil, "hive:someone", true, uint(100_000_000))
 	// get minted nft
-	CallContract(t, ct, "nft_get", PayloadToJSON("0"), nil, "hive:firstUser", true, uint(10_000_000))
-	// CallContract(t, "nft_get_creator", PayloadToJSON("hive:firstUser"), nil, "hive:firstUser", false, true)
+	CallContract(t, ct, "nft_get", PayloadToJSON("0"), nil, "hive:someone", true, uint(10_000_000))
 
 }
 
-func TestMintUniqueNFTFils(t *testing.T) {
+func TestMintUniqueNFTFails(t *testing.T) {
 	ct := SetupContractTest()
 	// create a collection for minter
 	CallContract(t, ct, "col_create", PayloadToJSON(map[string]string{
-		"name": "my cool collection",
-		"desc": "description of my cool collection",
+		"name": "collection name",
+		"desc": "collection longer description",
 	}), nil, "hive:minter", true, uint(100_000_000))
 
 	// create a collection for receiver
 	CallContract(t, ct, "col_create", PayloadToJSON(map[string]string{
-		"name": "my cool collection",
-		"desc": "description of my cool collection",
+		"name": "collection name",
+		"desc": "collection longer description",
 	}), nil, "hive:receiver", true, uint(100_000_000))
 	// mint nft (should fail) - collection not owned my minter
-	CallContract(t, ct, "nft_mint_unique", PayloadToJSON(map[string]any{
+	CallContract(t, ct, "nft_mint", PayloadToJSON(map[string]any{
 		"c":     1,
-		"name":  "my first nft",
-		"desc":  "some description",
+		"name":  "nft name",
+		"desc":  "nft longer description",
 		"bound": true,
 		"meta": map[string]string{
-			"foo":   "bar",
-			"hello": "world",
+			"a": "a value",
+			"b": "b value",
 		},
-	}), nil, "hive:firstUser", false, uint(100_000_000))
+	}), nil, "hive:someone", false, uint(100_000_000))
 
+	// mint nft with character overflows
+	CallContract(t, ct, "nft_mint", PayloadToJSON(map[string]any{
+		"c":     0,
+		"name":  "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore e",
+		"desc":  "nft longer description",
+		"bound": true,
+		"meta": map[string]string{
+			"a": "a value",
+			"b": "b value",
+		},
+	}), nil, "hive:someone", false, uint(100_000_000))
+
+	// character overflows
+	CallContract(t, ct, "nft_mint", PayloadToJSON(map[string]any{
+		"c":     0,
+		"name":  "nft name",
+		"desc":  "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.",
+		"bound": true,
+		"meta": map[string]string{
+			"a": "a value",
+			"b": "b value",
+		},
+	}), nil, "hive:someone", false, uint(100_000_000))
+
+	// meadata overflows
+
+	CallContract(t, ct, "nft_mint", PayloadToJSON(map[string]any{
+		"c":     0,
+		"name":  "nft name",
+		"desc":  "nft longer description",
+		"bound": true,
+		"meta": map[string]string{
+			"Lorem ipsum dolor sit amet, consectetur adipiscing elit.": "a value", // key too long
+			"b": "b value",
+		},
+	}), nil, "hive:someone", false, uint(100_000_000))
+
+	CallContract(t, ct, "nft_mint", PayloadToJSON(map[string]any{
+		"c":     0,
+		"name":  "nft name",
+		"desc":  "nft longer description",
+		"bound": true,
+		"meta": map[string]string{
+			"a": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum. Curabitur pretium tincidunt lacus, non luctus libero.", // value too long
+			"b": "b value",
+		},
+	}), nil, "hive:someone", false, uint(100_000_000))
+
+	CallContract(t, ct, "nft_mint", PayloadToJSON(map[string]any{
+		"c":     1,
+		"name":  "nft name",
+		"desc":  "nft longer description",
+		"bound": true,
+		"meta": map[string]string{ // too many entries
+			"a": "f3jK2p",
+			"b": "L8m2Qs",
+			"c": "wP9vRt",
+			"d": "h7Qx4Y",
+			"e": "bN3kZd",
+			"f": "V6rLmT",
+			"g": "yP2fWq",
+			"h": "J9vXsK",
+			"i": "uH4bPn",
+			"j": "Q7mLcR",
+			"k": "zK5vFw",
+			"l": "N2rHtB",
+			"m": "pY8qWx",
+			"n": "S4jVzL",
+			"o": "dC9mPf",
+			"p": "kL3bQt",
+			"q": "X7vJnY",
+			"r": "fH2qZp",
+			"s": "R5mLcW",
+			"t": "yK8vBt",
+			"u": "J3pXnV",
+			"v": "wQ6rLf",
+			"w": "nP9bGk",
+			"x": "S2tVzH",
+			"y": "cL7mWx",
+			"z": "hF4qRn",
+		},
+	}), nil, "hive:someone", false, uint(100_000_000))
+
+	// mint nft without name
+	CallContract(t, ct, "nft_mint", PayloadToJSON(map[string]any{
+		"c": 0,
+	}), nil, "hive:someone", false, uint(100_000_000))
+
+	// mint nft without collection
+	CallContract(t, ct, "nft_mint", PayloadToJSON(map[string]any{
+		"name": "nft name",
+	}), nil, "hive:someone", false, uint(100_000_000))
 }
 
-func TestBasicMintNFTs(t *testing.T) {
+func TestBurn(t *testing.T) {
 	ct := SetupContractTest()
 	// create a collection
 	CallContract(t, ct, "col_create", PayloadToJSON(map[string]string{
-		"name": "my cool collection",
-		"desc": "description of my cool collection",
-	}), nil, "hive:firstUser", true, uint(100_000_000))
+		"name": "collection name",
+		"desc": "collection longer description",
+	}), nil, "hive:someone", true, uint(100_000_000))
 	// mint 1 unique nft
-	CallContract(t, ct, "nft_mint_unique", PayloadToJSON(map[string]any{
+	CallContract(t, ct, "nft_mint", PayloadToJSON(map[string]any{
 		"c":     0,
-		"name":  "my first nft",
-		"desc":  "some description",
+		"name":  "nft name",
+		"desc":  "nft longer description",
 		"bound": true,
 		"meta": map[string]string{
-			"foo":   "bar",
-			"hello": "world",
+			"a": "a value",
+			"b": "b value",
 		},
-	}), nil, "hive:firstUser", true, uint(100_000_000))
-	// try to mint 101 nft editions (should fail)
-	CallContract(t, ct, "nft_mint_edition", PayloadToJSON(map[string]any{
-		"c":     0,
-		"name":  "my first nft",
-		"desc":  "some description",
-		"bound": true,
-		"meta": map[string]string{
-			"foo":   "bar",
-			"hello": "world",
-		},
-		"et": 101,
-	}), nil, "hive:firstUser", false, uint(10_000_000_000_000))
+	}), nil, "hive:someone", true, uint(100_000_000))
+	// burn it
+	CallContract(t, ct, "nft_burn", PayloadToJSON("0"), nil, "hive:someone", true, uint(100_000_000))
 
-	// try to mint 100 nft editions (should succeed)
-	CallContract(t, ct, "nft_mint_edition", PayloadToJSON(map[string]any{
-		"c":     0,
-		"name":  "my first nft",
-		"desc":  "some description",
-		"bound": true,
-		"meta": map[string]string{
-			"foo":   "bar",
-			"hello": "world",
-		},
-		"et": 100,
-	}), nil, "hive:firstUser", true, uint(10_000_000_000_000))
-	// get minted nfts by collection id
 }
 
-func TestExtendEditionNFTs(t *testing.T) {
+func TestBurnByMarket(t *testing.T) {
 	ct := SetupContractTest()
+	// set market
+	CallContract(t, ct, "set_market", PayloadToJSON("hive:marketaddress"), nil, "hive:contractowner", true, uint(10_000_000))
 	// create a collection
 	CallContract(t, ct, "col_create", PayloadToJSON(map[string]string{
-		"name": "my cool collection",
-		"desc": "description of my cool collection",
-	}), nil, "hive:firstUser", true, uint(100_000_000))
-	// mint 10 nft editions
-	CallContract(t, ct, "nft_mint_edition", PayloadToJSON(map[string]any{
+		"name": "collection name",
+		"desc": "collection longer description",
+	}), nil, "hive:someone", true, uint(100_000_000))
+	// mint 1 unique nft
+	CallContract(t, ct, "nft_mint", PayloadToJSON(map[string]any{
 		"c":     0,
-		"name":  "my first nft",
-		"desc":  "some description",
+		"name":  "nft name",
+		"desc":  "nft longer description",
 		"bound": true,
 		"meta": map[string]string{
-			"foo":   "bar",
-			"hello": "world",
+			"a": "a value",
+			"b": "b value",
+		},
+	}), nil, "hive:someone", true, uint(100_000_000))
+
+	// burn it by market
+	CallContract(t, ct, "nft_burn", PayloadToJSON("0"), nil, "hive:marketaddress", true, uint(100_000_000))
+}
+
+func TestBurnEdition(t *testing.T) {
+	ct := SetupContractTest()
+	// set market
+	CallContract(t, ct, "set_market", PayloadToJSON("hive:marketaddress"), nil, "hive:contractowner", true, uint(10_000_000))
+	// create a collection
+	CallContract(t, ct, "col_create", PayloadToJSON(map[string]string{
+		"name": "collection name",
+		"desc": "collection longer description",
+	}), nil, "hive:someone", true, uint(100_000_000))
+	// mint 1 unique nft
+	CallContract(t, ct, "nft_mint", PayloadToJSON(map[string]any{
+		"c":     0,
+		"name":  "nft name",
+		"desc":  "nft longer description",
+		"bound": true,
+		"meta": map[string]string{
+			"a": "a value",
+			"b": "b value",
 		},
 		"et": 10,
-	}), nil, "hive:firstUser", true, uint(10_000_000_000_000))
-	CallContract(t, ct, "nft_get_editions", PayloadToJSON("0"), nil, "hive:firstUser", true, uint(1_000_000))
-	// extend by 100 more nft editions
-	CallContract(t, ct, "nft_mint_edition", PayloadToJSON(map[string]any{
-		"c":     0,
-		"name":  "my first nft",
-		"desc":  "some description",
-		"bound": true,
-		"g":     0,
-		"meta": map[string]string{
-			"foo":   "bar",
-			"hello": "world",
-		},
-		"et": 100,
-	}), nil, "hive:firstUser", true, uint(10_000_000_000_000))
+	}), nil, "hive:someone", true, uint(100_000_000))
 
-	CallContract(t, ct, "nft_get_creator", PayloadToJSON("hive:firstUser"), nil, "hive:firstUser", true, uint(10_000_000))
-	CallContract(t, ct, "nft_get_collection", PayloadToJSON("0"), nil, "hive:firstUser", true, uint(10_000_000))
-	CallContract(t, ct, "nft_get_editions", PayloadToJSON("0"), nil, "hive:firstUser", true, uint(10_000_000))
-	CallContract(t, ct, "nft_get_available", PayloadToJSON("0"), nil, "hive:firstUser", true, uint(10_000_000))
+	// burn nft 0 edition 0 (is default for editioned nfts) - should succeed
+	CallContract(t, ct, "nft_burn", PayloadToJSON("0"), nil, "hive:someone", true, uint(100_000_000))
+
+	// try to burn edition - should succeed
+	CallContract(t, ct, "nft_burn", PayloadToJSON("0:1"), nil, "hive:someone", true, uint(100_000_000))
+
+	// try to burn edition 2 by other user - should fail
+	CallContract(t, ct, "nft_burn", PayloadToJSON("0:2"), nil, "hive:someoneelse", false, uint(100_000_000))
 }
 
-func TestBasicTranfers(t *testing.T) {
+func TestBurnFails(t *testing.T) {
 	ct := SetupContractTest()
+	// create a collection
+	CallContract(t, ct, "col_create", PayloadToJSON(map[string]string{
+		"name": "collection name",
+		"desc": "collection longer description",
+	}), nil, "hive:someone", true, uint(100_000_000))
+	// mint 1 unique nft
+	CallContract(t, ct, "nft_mint", PayloadToJSON(map[string]any{
+		"c":     0,
+		"name":  "nft name",
+		"desc":  "nft longer description",
+		"bound": true,
+		"meta": map[string]string{
+			"a": "a value",
+			"b": "b value",
+		},
+	}), nil, "hive:someone", true, uint(100_000_000))
+	// burn it by other user
+	CallContract(t, ct, "nft_burn", PayloadToJSON("0"), nil, "hive:secodUser", false, uint(100_000_000))
+}
+
+func TestMintEditions(t *testing.T) {
+	ct := SetupContractTest()
+	// create a collection
+	CallContract(t, ct, "col_create", PayloadToJSON(map[string]string{
+		"name": "collection name",
+		"desc": "collection longer description",
+	}), nil, "hive:someone", true, uint(100_000_000))
+
+	// try to mint max nft editions (should succeed)
+	CallContract(t, ct, "nft_mint", PayloadToJSON(map[string]any{
+		"c":     0,
+		"name":  "nft name",
+		"desc":  "nft longer description",
+		"bound": true,
+		"meta": map[string]string{
+			"a": "a value",
+			"b": "b value",
+		},
+		"et": 10,
+	}), nil, "hive:someone", true, uint(10_000_000_000_000))
+
+	// get minted nft 0
+	CallContract(t, ct, "nft_get", PayloadToJSON("0"), nil, "hive:someone", true, uint(10_000_000))
+
+	// get minted nft 0 - edition 9
+	CallContract(t, ct, "nft_get", PayloadToJSON("0:9"), nil, "hive:someone", true, uint(10_000_000))
+}
+
+func TestTransfers(t *testing.T) {
+	ct := SetupContractTest()
+	// set market
+	CallContract(t, ct, "set_market", PayloadToJSON("hive:marketaddress"), nil, "hive:contractowner", true, uint(10_000_000))
 	// create a collection for sender
 	CallContract(t, ct, "col_create", PayloadToJSON(map[string]string{
-		"name": "my cool collection",
-		"desc": "description of my cool collection",
-	}), nil, "hive:firstUser", true, uint(100_000_000))
+		"name": "collection name",
+		"desc": "collection longer description",
+	}), nil, "hive:someone", true, uint(100_000_000))
 
 	// create a collection for receiver
 	CallContract(t, ct, "col_create", PayloadToJSON(map[string]string{
-		"name": "my cool collection",
-		"desc": "description of my cool collection",
-	}), nil, "hive:secondUser", true, uint(100_000_000))
+		"name": "collection name",
+		"desc": "collection longer description",
+	}), nil, "hive:someoneelse", true, uint(100_000_000))
 
 	// mint nft
-	CallContract(t, ct, "nft_mint_unique", PayloadToJSON(map[string]any{
+	CallContract(t, ct, "nft_mint", PayloadToJSON(map[string]any{
 		"c":     0,
-		"name":  "my first nft",
-		"desc":  "some description",
-		"bound": true,
+		"name":  "nft name",
+		"desc":  "nft longer description",
+		"bound": false,
 		"meta": map[string]string{
-			"foo":   "bar",
-			"hello": "world",
+			"a": "a value",
+			"b": "b value",
 		},
-	}), nil, "hive:firstUser", true, uint(100_000_000))
-	// transfer 1st nft (should success)
+	}), nil, "hive:someone", true, uint(100_000_000))
+
+	// transfer nft by minter (should success)
 	CallContract(t, ct, "nft_transfer", PayloadToJSON(map[string]any{
-		"c":     1,
-		"id":    0,
-		"owner": "hive:secondUser",
-	}), nil, "hive:firstUser", true, uint(100_000_000))
+		"c":  1,
+		"id": "0",
+		"o":  "hive:someoneelse",
+	}), nil, "hive:someone", true, uint(100_000_000))
+
+	// transfer nft by market (should success)
+	CallContract(t, ct, "nft_transfer", PayloadToJSON(map[string]any{
+		"c":  0,
+		"id": "0",
+		"o":  "hive:someone",
+	}), nil, "hive:marketaddress", true, uint(100_000_000))
+}
+
+func TestTransfersFails(t *testing.T) {
+	ct := SetupContractTest()
+	// create a collection for sender
+	CallContract(t, ct, "col_create", PayloadToJSON(map[string]string{
+		"name": "collection name",
+		"desc": "collection longer description",
+	}), nil, "hive:someone", true, uint(100_000_000))
+
+	// create a collection for receiver
+	CallContract(t, ct, "col_create", PayloadToJSON(map[string]string{
+		"name": "collection name",
+		"desc": "collection longer description",
+	}), nil, "hive:someoneelse", true, uint(100_000_000))
+
+	// mint nft
+	CallContract(t, ct, "nft_mint", PayloadToJSON(map[string]any{
+		"c":     0,
+		"name":  "nft name",
+		"desc":  "nft longer description",
+		"bound": false,
+		"meta": map[string]string{
+			"a": "a value",
+			"b": "b value",
+		},
+	}), nil, "hive:someone", true, uint(100_000_000))
+
+	// transfer nft by minter to collection not owned by new owner (should fail)
+	CallContract(t, ct, "nft_transfer", PayloadToJSON(map[string]any{
+		"c":  0,
+		"id": "0",
+		"o":  "hive:someoneelse",
+	}), nil, "hive:someone", false, uint(100_000_000))
+
 }
 
 func TestEditionTransfers(t *testing.T) {
 	ct := SetupContractTest()
 	// create a collection for sender
 	CallContract(t, ct, "col_create", PayloadToJSON(map[string]string{
-		"name": "my cool collection",
-		"desc": "description of my cool collection",
-	}), nil, "hive:firstUser", true, uint(100_000_000))
+		"name": "collection name",
+		"desc": "collection longer description",
+	}), nil, "hive:someone", true, uint(100_000_000))
 
 	// create a collection for receiver
 	CallContract(t, ct, "col_create", PayloadToJSON(map[string]string{
-		"name": "my cool collection",
-		"desc": "description of my cool collection",
-	}), nil, "hive:secondUser", true, uint(100_000_000))
+		"name": "collection name",
+		"desc": "collection longer description",
+	}), nil, "hive:someoneelse", true, uint(100_000_000))
 
 	// mint nft
-	CallContract(t, ct, "nft_mint_edition", PayloadToJSON(map[string]any{
+	CallContract(t, ct, "nft_mint", PayloadToJSON(map[string]any{
 		"c":     0,
-		"name":  "my first nft",
-		"desc":  "some description",
-		"bound": true,
+		"name":  "nft name",
+		"desc":  "nft longer description",
+		"bound": false,
 		"meta": map[string]string{
-			"foo":   "bar",
-			"hello": "world",
+			"a": "a value",
+			"b": "b value",
 		},
-		"et": 10,
-	}), nil, "hive:firstUser", true, uint(10_000_000_000_000))
+		"et": 999_999_999,
+	}), nil, "hive:someone", true, uint(10_000_000_000_000))
 	// transfer edition no 3 nft (should success)
 	CallContract(t, ct, "nft_transfer", PayloadToJSON(map[string]any{
-		"c":     1,
-		"id":    3,
-		"owner": "hive:secondUser",
-	}), nil, "hive:firstUser", true, uint(100_000_000))
+		"c":  1,
+		"id": "0:3",
+		"o":  "hive:someoneelse",
+	}), nil, "hive:someone", true, uint(100_000_000))
 
-	// CallContract(t, ct, "nft_get_creator", PayloadToJSON("hive:firstUser"), nil, "hive:firstUser", true, uint(10_000_000))
-	// t.Log("minter collection")
-	// CallContract(t, ct, "nft_get_collection", PayloadToJSON("0"), nil, "hive:firstUser", true, uint(10_000_000))
-	// t.Log("receiver collection")
-	// CallContract(t, ct, "nft_get_collection", PayloadToJSON("1"), nil, "hive:firstUser", true, uint(10_000_000))
-	// t.Log("all editions")
-	// CallContract(t, ct, "nft_get_editions", PayloadToJSON("0"), nil, "hive:firstUser", true, uint(10_000_000))
-	// t.Log("available editions")
-	// CallContract(t, ct, "nft_get_availableList", PayloadToJSON("0"), nil, "hive:firstUser", true, uint(10_000_000))
-}
-
-func TestTranfersWithFails1(t *testing.T) {
-	ct := SetupContractTest()
-	// create a collection for sender
-	CallContract(t, ct, "col_create", PayloadToJSON(map[string]string{
-		"name": "my cool collection",
-		"desc": "description of my cool collection",
-	}), nil, "hive:firstUser", true, uint(100_000_000))
-
-	// create a collection for receiver
-	CallContract(t, ct, "col_create", PayloadToJSON(map[string]string{
-		"name": "my cool collection",
-		"desc": "description of my cool collection",
-	}), nil, "hive:secondUser", true, uint(100_000_000))
-
-	// create a 2nd collection for sender
-	CallContract(t, ct, "col_create", PayloadToJSON(map[string]string{
-		"name": "my other cool collection",
-		"desc": "description of my cool collection",
-	}), nil, "hive:firstUser", true, uint(100_000_000))
-
-	// mint nft
-	CallContract(t, ct, "nft_mint_unique", PayloadToJSON(map[string]any{
-		"c":     0,
-		"name":  "my first nft",
-		"desc":  "some description",
-		"bound": true,
-		"meta": map[string]string{
-			"foo":   "bar",
-			"hello": "world",
-		},
-	}), nil, "hive:firstUser", true, uint(100_000_000))
-
-	// mint nft (should fail) - owner of collection != caller
-	CallContract(t, ct, "nft_mint_unique", PayloadToJSON(map[string]any{
-		"c":     1,
-		"name":  "my 3rd nft",
-		"desc":  "some description",
-		"bound": true,
-		"meta": map[string]string{
-			"foo":   "bar",
-			"hello": "world",
-		},
-	}), nil, "hive:firstUser", false, uint(100_000_000))
-
-	// move 1st nft (should fail) - collection and owner is same
+	// transfer edition no 99999 nft (should success)
 	CallContract(t, ct, "nft_transfer", PayloadToJSON(map[string]any{
-		"c":     0,
-		"id":    0,
-		"owner": "hive:firstUser",
-	}), nil, "hive:firstUser", false, uint(100_000_000))
+		"c":  1,
+		"id": "0:99999",
+		"o":  "hive:someoneelse",
+	}), nil, "hive:someone", true, uint(100_000_000))
 
-	// move 1st nft (should fail) - collection owned by other user
+	// transfer back edition no 99999 nft (should success)
 	CallContract(t, ct, "nft_transfer", PayloadToJSON(map[string]any{
-		"c":     1,
-		"id":    0,
-		"owner": "hive:firstUser",
-	}), nil, "hive:firstUser", false, uint(100_000_000))
+		"c":  0,
+		"id": "0:99999",
+		"o":  "hive:someone",
+	}), nil, "hive:someoneelse", true, uint(100_000_000))
 
-}
-
-func TestTranfersWithFails2(t *testing.T) {
-	ct := SetupContractTest()
-	// create a collection for sender
-	CallContract(t, ct, "col_create", PayloadToJSON(map[string]string{
-		"name": "my cool collection",
-		"desc": "description of my cool collection",
-	}), nil, "hive:firstUser", true, uint(100_000_000))
-
-	// create a collection for receiver
-	CallContract(t, ct, "col_create", PayloadToJSON(map[string]string{
-		"name": "my cool collection",
-		"desc": "description of my cool collection",
-	}), nil, "hive:secondUser", true, uint(100_000_000))
-
-	// create a 2nd collection for sender
-	CallContract(t, ct, "col_create", PayloadToJSON(map[string]string{
-		"name": "my other cool collection",
-		"desc": "description of my cool collection",
-	}), nil, "hive:firstUser", true, uint(100_000_000))
-
-	CallContract(t, ct, "col_get", PayloadToJSON("2"), nil, "hive:firstUser", true, uint(10_000_000))
-
-	// mint nft
-	CallContract(t, ct, "nft_mint_unique", PayloadToJSON(map[string]any{
-		"c":     0,
-		"name":  "my first nft",
-		"desc":  "some description",
-		"bound": true,
-		"meta": map[string]string{
-			"foo":   "bar",
-			"hello": "world",
-		},
-	}), nil, "hive:firstUser", true, uint(100_000_000))
-
-	// transfer 1st nft (should success)
+	// maliciou trying to transfer edition no 5000 not by owner (should fail)
 	CallContract(t, ct, "nft_transfer", PayloadToJSON(map[string]any{
-		"c":     1,
-		"id":    0,
-		"owner": "hive:secondUser",
-	}), nil, "hive:firstUser", true, uint(100_000_000))
-	// transfer 1st nft back (should fail) - nft is bound to user
+		"c":  1,
+		"id": "0:5000",
+		"o":  "hive:someoneelse",
+	}), nil, "hive:someoneelse", false, uint(100_000_000))
+
+	// trying to transfer edition no 6000 to collection not owned by new nft owner (should fail)
 	CallContract(t, ct, "nft_transfer", PayloadToJSON(map[string]any{
-		"c":     0,
-		"id":    0,
-		"owner": "hive:firstUser",
-	}), nil, "hive:secondUser", false, uint(100_000_000))
+		"c":  0,
+		"id": "0:6000",
+		"o":  "hive:someoneelse",
+	}), nil, "hive:someone", false, uint(100_000_000))
 
-}
-
-func TestTranfersWithFails3(t *testing.T) {
-	ct := SetupContractTest()
-	// create a collection for sender
-	CallContract(t, ct, "col_create", PayloadToJSON(map[string]string{
-		"name": "my cool collection",
-		"desc": "description of my cool collection",
-	}), nil, "hive:firstUser", true, uint(100_000_000))
-
-	// create a collection for receiver
-	CallContract(t, ct, "col_create", PayloadToJSON(map[string]string{
-		"name": "my cool collection",
-		"desc": "description of my cool collection",
-	}), nil, "hive:secondUser", true, uint(100_000_000))
-
-	// mint nft (should fail) - owner of collection != caller
-	CallContract(t, ct, "nft_mint_unique", PayloadToJSON(map[string]any{
-		"c":     1,
-		"name":  "my 3rd nft",
-		"desc":  "some description",
-		"bound": true,
-		"meta": map[string]string{
-			"foo":   "bar",
-			"hello": "world",
-		},
-	}), nil, "hive:firstUser", false, uint(100_000_000))
 }

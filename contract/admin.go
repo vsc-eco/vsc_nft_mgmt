@@ -5,11 +5,11 @@ import (
 	"vsc_nft_mgmt/sdk"
 )
 
-var ContractCreator = "hive:tibfox.vsc" // TODO: set contract owner here
+var ContractCreator = "hive:contractowner"
 
 // Set the upcoming market contract
 //
-//go:wasmexport admin_set_market
+//go:wasmexport set_market
 func SetMarketContract(address *string) *string {
 	if address == nil || *address == "" {
 		sdk.Abort("market address needed")
@@ -20,6 +20,11 @@ func SetMarketContract(address *string) *string {
 	}
 	sdk.StateSetObject("a:mc", *address)
 	return nil
+}
+
+//go:wasmexport get_market
+func GetMarket(id *string) *string {
+	return getMarketContract()
 }
 
 func getMarketContract() *string {

@@ -9,18 +9,22 @@ enabling various nft related functionalities.
 ## 📖 Overview
 
 -   **Language:** Go (Golang) 1.23.2+
--   **Purpose:** Provides basic functions to create collections and minting nfts
+-   **Purpose:** Provides basic functions to create collections, minting, transferring and burning nfts
 
 
 ## 📖 Schema
 
-Each Adress can have multiple collections. In each collection can be included multiple NFTs. There are Edition NFTs that are a series of nfts. The first one of these series are called "genesis edition". Every NFT can be transferred no matter if they are unique, genesis or editions.
+Each Adress can have multiple collections. In each collection can be included multiple NFTs.
+There are editioned NFTs that are a sets of similar nfts and each edition is not stored as separate nft object.
+Every NFT can be transferred and burned no matter if they are unique or editions.
 
 - Collection (Id 123)
     - unique NFT (Id 42)
-    - Edition NFTs aka "Genesis Edition" (Id 43)
-        - Edition 2 (Id 44)
-        - Edition 3 (Id 45)
+    - Editioned NFT (Id 43)
+        - Edition 0 (Id 43:0)
+        - Edition 1 (Id 43:1)
+        - Edition 2 (Id 43:2)
+        - Edition 3 (Id 43:3)
         - ...
     - unique NFT (Id 101)
     - ...
@@ -36,9 +40,8 @@ Each Adress can have multiple collections. In each collection can be included mu
     ├── contract/
     │   └── admin.go // administrative functions
     │   └── collections.go // functions for creating and getting collection data
-    │   └── getters_tests.go // exported getter functions for testing only
+    │   └── events.go // event emitting functions for off-chain indexers
     │   └── helpers.go // various utility functions
-    │   └── indexing.go // features to maintaining multiple indexes for faster reads of contract state data
     │   └── main.go // placeholder
     │   └── nfts.go // functions related to nfts like minting, transferring and getting nft data
     ├── runtime/
@@ -48,7 +51,11 @@ Each Adress can have multiple collections. In each collection can be included mu
     │   └── asset.go
     │   └── env.go        
     │   └── sdk.go    
+    ├── test/
+    │   └── basic_test.go // various tests
+    │   └── helpers_test.go // helpers for the tests
     ├── go.mod
+    ├── go.sum
     ├── readme.md
 
 
@@ -67,13 +74,12 @@ For instructions related to building and deploying see the [official docs - TODO
 ## ✅ Testing
 
 There are tests defined under `tests/basic_test.go`for all the important exported function implementations.
-This file also uses the getters of the `contract/getters_tests.go` for visualization of the contract state.
 
-You can build a testing build (including the various getter functions) with the following command contrary to the official documentation:
+You can build a testing build with the following command contrary to the official documentation:
 `tinygo build -gc=custom -scheduler=none -panic=trap -no-debug -target=wasm-unknown -tags=test -o test/artifacts/main.wasm ./contract`
 
 The tests are designed to run sequencially because the mocking database layer is a single-use-file only.
-For running the tests you imply run `go test -p 1 ./test -v` from within the root. 
+For running the tests you simply run `go test -p 1 ./test -v` from within the root. 
 
 You should see a PASS at the end. If not there is at least one tests that failed:
 ```
@@ -105,23 +111,24 @@ Creates a collection for the sending address.
 payload: 
 ```json5
 {
-    "name": "Trasure Chest", // mandatory: name of the collection
-    "description": "All my NFTs" // optional: description of the collection
+    "name": "Trasure Chest", // mandatory: name of the collection (max 100 characters)
+    "description": "All my NFTs" // optional: description of the collection (max 1000 characters)
 }
 ```
 
 
-#### Mint Unique NFT
+#### Mint NFT
 
-action: `nft_mint_unique`
-Creates a **unique** NFT.
+action: `nft_mint`
+Creates a **unique** or **editioned** NFT.
 
+**unique:**
 ```json5
 {
-  "col": "123", // mandatory: target collection ID
+  "c": "123", // mandatory: target collection ID
   "name": "Golden Sword", // mandatory: name of the NFT
   "desc": "A legendary one-of-a-kind sword", // optional: description
-  "bound": false, // optional: true = can be transferred only once from creator
+  "bound": false, // optional: true = can be transferred only once from creator (/)defaults to false)
   "meta": { // optional: metadata key-value pairs
     "rarity": "legendary",
     "attack": "150",
@@ -130,22 +137,19 @@ Creates a **unique** NFT.
 }
 ```
 
-#### Mint Editioned NFT
-action: `nft_mint_edition`
-Creates **editions** of NFTs.
+**editioned with 10 editions:**
 ```json5
 {
-  "col": "123", // mandatory: target collection ID
-  "name": "Silver Shield", // mandatory: name of the NFT
-  "desc": "Limited edition silver shield", // optional: description stored only on genesis
-  "bound": false, // optional: true = can be transferred only once from creator 
-  "meta": { // optional: metadata (applied to genesis to avoid redundancy)
-    "rarity": "rare",
-    "defense": "200"
+  "c": "123", // mandatory: target collection ID
+  "name": "Golden Sword", // mandatory: name of the NFT
+  "desc": "A legendary one-of-a-kind sword", // optional: description
+  "bound": false, // optional: true = can be transferred only once from creator (/)defaults to false)
+  "meta": { // optional: metadata key-value pairs
+    "rarity": "legendary",
+    "attack": "150",
+    "durability": "unbreakable"
   },
-  "editions": 10, // mandatory: total number of editions (> 0) max 100
-  "g": 10, // optional: genesis edition if the series should get extended
-
+  "et":10
 }
 ```
 
@@ -156,13 +160,13 @@ Tranfers an **NFT** (edition or unique) to a new collection or a new owner. Only
 {
   "id": "42", // mandatory: NFT ID (string-form ID used in state keys)
   "col": "123", // mandatory: destination collection ID (can be same as current)
-  "owner": "hive:tibfox" // mandatory: destination owner address
+  "owner": "hive:someone" // mandatory: destination owner address
 }
 ```
 
 ### Queries
-The following exported functions return json and are meant to be used by other contracts like the market contract for example. Reading data from a contract state outside of the smart contract environment is more cost-effective and faster by utilizing the vsc API. (TODO: add link to doc part about reading key/value from contract state)
-For that reason most of the getters below are only incuded in the test build (see above).
+The following exported functions return json and are meant to be used by other contracts like the market contract for example. Reading data from a contract state outside of the smart contract environment is more cost-effective and faster by utilizing the vsc API and a future indexers.
+For that reason there are only single-object getters defined.
 
 
 #### Collections
@@ -173,12 +177,6 @@ Returns a collection.
 | col_get     | 123     | mandatory: Collection ID     |
 
 
-##### Get Collections For Address (only available in test build)
-Returns all collections for a give address.
-| action | payload  | payload description |
-| ------ | -------- | ------------------- |
-| col_get_user | hive:tibfox | mandatory: owner address |
-
 #### NFTs
 ##### Get One NFT
 Returns an NFT
@@ -186,51 +184,142 @@ Returns an NFT
 | ------ | -------- | ------------------- |
 | nft_get | 42 | mandatory: NFT ID |
 
-##### Get Next Available Edition for an NFT
-Returns all Editions for a given NFT
-| action | payload  | payload description |
-| ------ | -------- | ------------------- |
-| nft_get_available | 42 | mandatory: genesis NFT ID |
+
+## On-Chain Events
+
+The contract outputs standardized event logs for future indexers. This way an UI can quickly show nfts within a collection, available editions for an nft, all nfts for a given user, etc.
+
+Each log is represented by an `Event` object with two main fields:
+
+- **`type`** – the kind of event (e.g., `transfer`, `mint`, `burn`, `collection`)  
+- **`attributes`** – key-value pairs containing contextual event details  
+
+All events are logged via the internal `emitEvent` helper, which serializes them to JSON and passes them to `sdk.Log`.
+
+As we support unique nfts and editioned nfts the nft identifier could be in 2 different formats:
+| NFT Type |NFT Identifier | Description |
+|------------|----------------|-------------------|-------------|
+| Unique NFT | "123" |  Actual NFT Id |
+| Editioned NFT | "124:10" | Composite Id containing NFT Id (124) and edition index (10) |
+
+Addressing the identifier as "124" if the nft itself is edition-based the contract will automatically assume edition #0 is meant.
 
 
-##### Get Editions for an NFT (only available in test build)
-Returns all Editions for a given NFT
-| action | payload  | payload description |
-| ------ | -------- | ------------------- |
-| nft_get_editions | 42 | mandatory: genesis NFT ID |
+### Event Summary Table
 
-##### Get Available Editions for an NFT (only available in test build)
-Returns all Editions for a given NFT that are still owned by the minting address.
-| action | payload  | payload description |
-| ------ | -------- | ------------------- |
-| nft_get_availableList | 42 | mandatory: genesis NFT ID |
+| Event Type | Key Attributes | Optional Attributes | Description |
+|------------|----------------|-------------------|-------------|
+| `transfer` | `id`, `from`, `to`, `fromCollection`, `toCollection` | – | Emitted when an NFT is transferred between addresses |
+| `mint`     | `id`, `by`, `to`, `toCollection` | `editionsTotal` | Emitted when a new NFT is created |
+| `burn`     | `id`, `by`, `collection` | – | Emitted when an NFT is destroyed |
+| `collection` | `id`, `by` | – | Emitted when a new NFT collection is created |
 
-##### Get NFTs for Collection (only available in test build)
-Returns a list of NFTs within a collection.
-| action | payload  | payload description |
-| ------ | -------- | ------------------- |
-| nft_get_collection | 123 | mandatory: collection ID |
 
-##### Get NFTs for Owner (only available in test build)
-Returns all NFTs owned by a specified address.
-| action | payload  | payload description |
-| ------ | -------- | ------------------- |
-| nft_get_owner | hive:tibfox | mandatory: owner address |
+### Event Types
 
-##### Get NFTs minted by Adress (only available in test build)
-Returns all NFTs minted by a specified address.
-| action | payload  | payload description |
-| ------ | -------- | ------------------- |
-| nft_get_creator | hive:tibfox | mandatory: creator address |
+#### 🔄 Transfer Event
+Emitted when an NFT is transferred between addresses.
+
+**Attributes**
+- `id` – NFT identifier
+- `from` – sender address  
+- `to` – receiver address  
+- `fromCollection` – source collection ID  
+- `toCollection` – destination collection ID  
+
+**Example**
+```json
+{
+  "type": "transfer",
+  "attributes": {
+    "id": "123",
+    "from": "hive:someone",
+    "to": "hive:someoneelse",
+    "fromCollection": "1",
+    "toCollection": "2"
+  }
+}
+````
+
+
+#### 🪙 Mint Event
+
+Emitted when a new NFT is created.
+
+**Attributes**
+
+* `id` – minted NFT identifier
+* `by` – address that minted the NFT
+* `to` – receiver address (usually the same as minting address)
+* `toCollection` – collection ID (needs to be owned by the receiving address)
+* `editionsTotal` *(optional)* – number of editions created
+
+**Example**
+
+```json
+{
+  "type": "mint",
+  "attributes": {
+    "id": "456",
+    "by": "hive:someone",
+    "to": "hive:someone",
+    "toCollection": "3",
+    "editionsTotal": "10"
+  }
+}
+```
+
+
+#### 🔥 Burn Event
+
+Emitted when an NFT is destroyed.
+
+**Attributes**
+
+* `id` – burned NFT identifier
+* `by` – owner address that burned it
+* `collection` – collection ID
+
+**Example**
+
+```json
+{
+  "type": "burn",
+  "attributes": {
+    "id": "789",
+    "by": "hive:someone",
+    "collection": "4"
+  }
+}
+```
+
+
+#### 📦 Collection Created Event
+
+Emitted when a new NFT collection is initialized.
+
+**Attributes**
+
+* `id` – collection ID
+* `by` – creator address
+
+**Example**
+
+```json
+{
+  "type": "collection",
+  "attributes": {
+    "id": "5",
+    "by": "hive:someone"
+  }
+}
+```
 
 
 
 ## 📚 Documentation
-
 -   [Go-VSC-Node](https://github.com/vsc-eco/go-vsc-node)
 -   [Go-Contract-Template](https://github.com/vsc-eco/go-contract-template)
 
-
 ## 📜 License
-
 This project is licensed under the [MIT License](LICENSE).
