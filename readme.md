@@ -160,13 +160,13 @@ Tranfers an **NFT** (edition or unique) to a new collection or a new owner. Only
 {
   "id": "42", // mandatory: NFT ID (string-form ID used in state keys)
   "col": "123", // mandatory: destination collection ID (can be same as current)
-  "owner": "hive:tibfox" // mandatory: destination owner address
+  "owner": "hive:someone" // mandatory: destination owner address
 }
 ```
 
 ### Queries
-The following exported functions return json and are meant to be used by other contracts like the market contract for example. Reading data from a contract state outside of the smart contract environment is more cost-effective and faster by utilizing the vsc API and a future indexer.
-For that reason there are only sing-object getters defined.
+The following exported functions return json and are meant to be used by other contracts like the market contract for example. Reading data from a contract state outside of the smart contract environment is more cost-effective and faster by utilizing the vsc API and a future indexers.
+For that reason there are only single-object getters defined.
 
 
 #### Collections
@@ -187,26 +187,133 @@ Returns an NFT
 
 ## On-Chain Events
 
-The contract outputs standardized event logs for future indexers. This way a UI can quickly show nfts within a collection, available editions for an nft, etc.
+The contract outputs standardized event logs for future indexers. This way an UI can quickly show nfts within a collection, available editions for an nft, all nfts for a given user, etc.
+
+Each log is represented by an `Event` object with two main fields:
+
+- **`type`** – the kind of event (e.g., `transfer`, `mint`, `burn`, `collection`)  
+- **`attributes`** – key-value pairs containing contextual event details  
+
+All events are logged via the internal `emitEvent` helper, which serializes them to JSON and passes them to `sdk.Log`.
+
+As we support unique nfts and editioned nfts the nft identifier could be in 2 different formats:
+| NFT Type |NFT Identifier | Description |
+|------------|----------------|-------------------|-------------|
+| Unique NFT | "123" |  Actual NFT Id |
+| Editioned NFT | "124:10" | Composite Id containing NFT Id (124) and edition index (10) |
+
+Addressing the identifier as "124" if the nft itself is edition-based the contract will automatically assume edition #0 is meant.
 
 
-| Event Name            | Parameter        | Type     | Description                                           |
-| --------------------- | ---------------- | -------- | ----------------------------------------------------- |
-| Transfer              | `id`             | uint64   | NFT ID being transferred                              |
-|                       | `from`           | string   | Address of the current owner                          |
-|                       | `to`             | string   | Address of the recipient                              |
-|                       | `fromCollection` | uint64   | Collection ID from which the NFT is moved             |
-|                       | `toCollection`   | uint64   | Collection ID to which the NFT is moved               |
-| Mint                  | `id`             | uint64   | NFT ID being minted                                   |
-|                       | `by`             | string   | Address of the minter (creator)                       |
-|                       | `to`             | string   | Address receiving the NFT                             |
-|                       | `collection`     | uint64   | Collection ID the NFT belongs to                      |
-|                       | `genesis`        | \*uint64 | Optional: ID of the genesis NFT if this is an edition |
-| Burn                  | `id`             | uint64   | NFT ID being burned                                   |
-|                       | `owner`          | string   | Address of the current owner of the NFT               |
-|                       | `collection`     | uint64   | Collection ID the NFT belongs to                      |
-| CollectionCreated     | `id`             | uint64   | Collection ID that was created                        |
-|                       | `by`             | string   | Address of the creator of the collection              |
+### Event Summary Table
+
+| Event Type | Key Attributes | Optional Attributes | Description |
+|------------|----------------|-------------------|-------------|
+| `transfer` | `id`, `from`, `to`, `fromCollection`, `toCollection` | – | Emitted when an NFT is transferred between addresses |
+| `mint`     | `id`, `by`, `to`, `toCollection` | `editionsTotal` | Emitted when a new NFT is created |
+| `burn`     | `id`, `by`, `collection` | – | Emitted when an NFT is destroyed |
+| `collection` | `id`, `by` | – | Emitted when a new NFT collection is created |
+
+
+### Event Types
+
+#### 🔄 Transfer Event
+Emitted when an NFT is transferred between addresses.
+
+**Attributes**
+- `id` – NFT identifier
+- `from` – sender address  
+- `to` – receiver address  
+- `fromCollection` – source collection ID  
+- `toCollection` – destination collection ID  
+
+**Example**
+```json
+{
+  "type": "transfer",
+  "attributes": {
+    "id": "123",
+    "from": "hive:someone",
+    "to": "hive:someoneelse",
+    "fromCollection": "1",
+    "toCollection": "2"
+  }
+}
+````
+
+
+#### 🪙 Mint Event
+
+Emitted when a new NFT is created.
+
+**Attributes**
+
+* `id` – minted NFT identifier
+* `by` – address that minted the NFT
+* `to` – receiver address (usually the same as minting address)
+* `toCollection` – collection ID (needs to be owned by the receiving address)
+* `editionsTotal` *(optional)* – number of editions created
+
+**Example**
+
+```json
+{
+  "type": "mint",
+  "attributes": {
+    "id": "456",
+    "by": "hive:someone",
+    "to": "hive:someone",
+    "toCollection": "3",
+    "editionsTotal": "10"
+  }
+}
+```
+
+
+#### 🔥 Burn Event
+
+Emitted when an NFT is destroyed.
+
+**Attributes**
+
+* `id` – burned NFT identifier
+* `by` – owner address that burned it
+* `collection` – collection ID
+
+**Example**
+
+```json
+{
+  "type": "burn",
+  "attributes": {
+    "id": "789",
+    "by": "hive:someone",
+    "collection": "4"
+  }
+}
+```
+
+
+#### 📦 Collection Created Event
+
+Emitted when a new NFT collection is initialized.
+
+**Attributes**
+
+* `id` – collection ID
+* `by` – creator address
+
+**Example**
+
+```json
+{
+  "type": "collection",
+  "attributes": {
+    "id": "5",
+    "by": "hive:someone"
+  }
+}
+```
 
 
 
