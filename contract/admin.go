@@ -5,9 +5,11 @@ import (
 	"vsc_nft_mgmt/sdk"
 )
 
+// ContractCreator is the address that deployed the contract and has admin rights.
 var ContractCreator = "hive:contractowner"
 
-// Set the upcoming market contract
+// SetMarketContract sets the address of the market contract.
+// Only the ContractCreator is authorized to call this function.
 //
 //go:wasmexport set_market
 func SetMarketContract(address *string) *string {
@@ -22,11 +24,14 @@ func SetMarketContract(address *string) *string {
 	return nil
 }
 
+// GetMarket returns the address of the market contract currently set.
+//
 //go:wasmexport get_market
 func GetMarket(id *string) *string {
 	return getMarketContract()
 }
 
+// getMarketContract retrieves the stored market contract address from state.
 func getMarketContract() *string {
 	contract := sdk.StateGetObject("a:mc")
 	return contract
