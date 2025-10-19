@@ -20,7 +20,7 @@ func SetMarketContract(address *string) *string {
 	if *sender != ContractCreator {
 		sdk.Abort(fmt.Sprintf("only %s can set", ContractCreator))
 	}
-	sdk.StateSetObject("a:mc", *address)
+	sdk.StateSetObject("mc", *address)
 	return nil
 }
 
@@ -33,6 +33,6 @@ func GetMarket(id *string) *string {
 
 // getMarketContract retrieves the stored market contract address from state.
 func getMarketContract() *string {
-	contract := sdk.StateGetObject("a:mc")
+	contract := sdk.StateGetObject("mc")
 	return contract
 }

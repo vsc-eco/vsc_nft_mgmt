@@ -1,104 +1,102 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 	"vsc_nft_mgmt/sdk"
 )
 
 const (
-	maxNameLength = 100  // maximum length for names (used by collections and nfts)
-	maxDescLength = 1000 // maximum length for descriptions (used by collections and nfts)
+	maxNameLength = 25  // maxNameLength is the maximum length for collection or NFT names.
+	maxDescLength = 100 // maxDescLength is the maximum length for collection or NFT descriptions.
 )
 
-type Collection struct {
-	ID           uint64      `json:"id"`
-	Name         string      `json:"name"`
-	Description  string      `json:"desc"`
-	Owner        sdk.Address `json:"owner"`
-	CreationTxID string      `json:"txid"`
-}
-
-// function arguments
-type CreateCollectionArgs struct {
-	Name        string `json:"name"` // mandatory: name of the collection
-	Description string `json:"desc"` // optional: description of the collection
-}
-
+// CreateCollection creates and saves a new collection.
+//
 //go:wasmexport col_create
 func CreateCollection(payload *string) *string {
-	// env := sdkInterface.GetEnv()
-	input := FromJSON[CreateCollectionArgs](*payload, "collection args")
+	if payload == nil || *payload == "" {
+		sdk.Abort("input CSV is nil or empty")
+	}
 
-	input.Validate()
-	env := sdk.GetEnv()
+	parts := strings.Split(*payload, "|")
+	if len(parts) != 2 {
+		sdk.Abort("invalid CSV format: expected 2 fields (Name|Description)")
+	}
+
+	name := parts[0]
+	description := parts[1]
+
+	if name == "" {
+		sdk.Abort("name is mandatory")
+	}
+	if len(name) > maxNameLength {
+		sdk.Abort("name too long")
+	}
+	if len(description) > maxDescLength {
+		sdk.Abort("description too long")
+	}
+
 	creator := sdk.GetEnvKey("msg.sender")
 	collectionId := newCollectionID()
 
-	collection := Collection{
-		ID:           collectionId,
-		Owner:        sdk.Address(*creator),
-		Name:         input.Name,
-		Description:  input.Description,
-		CreationTxID: env.TxId,
-	}
-	saveCollection(&collection)
+	saveCollection(collectionId, name, description, *creator)
 	return nil
 }
 
-// GET FUNCTIONS
-// returns an collection for a given collection id
-
+// GetCollection returns a collection by its ID.
+//
 //go:wasmexport col_get
-func GetCollection(id *string) *string {
-	collection := loadCollection(StringToUInt64(id))
+func GetCollection(payload *string) *string {
+	if payload == nil || *payload == "" {
+		sdk.Abort("input CSV is nil or empty")
+	}
+
+	parts := strings.Split(*payload, "|")
+	if len(parts) != 2 {
+		sdk.Abort("invalid CSV format: expected 2 fields (owner|collectionID)")
+	}
+
+	collection := loadCollection(parts[0], parts[1])
 	jsonStr := ToJSON(collection, "collection")
 	return &jsonStr
 }
 
-// Contract State Persistence
-func saveCollection(collection *Collection) error {
-	b, err := json.Marshal(collection)
-	if err != nil {
-		sdk.Abort("failed to marshal collection")
-	}
+// saveCollection persists a collection to state and emits a creation event.
+func saveCollection(ID uint64, name string, description string, owner string) error {
+	buf := make([]byte, 0, len(name)+len(description)+1)
+	buf = append(buf, name...)
+	buf = append(buf, '|')
+	buf = append(buf, description...)
+	// Save collection object.
+	idKey := collectionKey(owner, strconv.FormatUint(ID, 10))
+	sdk.StateSetObject(idKey, string(buf))
 
-	// save collection itself
-	idKey := collectionKey(collection.ID)
-	sdk.StateSetObject(idKey, string(b))
-	EmitCollectionCreatedEvent(collection.ID, collection.Owner.String())
-	// increase global collection counter
-	setCount(CollectionCount, collection.ID+uint64(1))
+	// Emit creation event.
+	EmitCollectionCreatedEvent(ID, owner)
+
+	// Increment global collection counter.
+	setCount(CollectionCount, ID+uint64(1))
 	return nil
 }
 
-func loadCollection(id uint64) *Collection {
-	key := collectionKey(id)
+// loadCollection retrieves a collection from state by ID.
+func loadCollection(owner string, id string) *string {
+	key := collectionKey(owner, id)
 	ptr := sdk.StateGetObject(key)
 	if ptr == nil || *ptr == "" {
-		sdk.Abort(fmt.Sprintf("collection %d not found", id))
+		sdk.Abort(fmt.Sprintf("collection %s:%s not found", owner, id))
 	}
-	collection := FromJSON[Collection](*ptr, "collection")
-	return collection
+	return ptr
 }
 
-func (c *CreateCollectionArgs) Validate() {
-	if c.Name == "" {
-		sdk.Abort("name is mandatory")
-	}
-	if len(c.Name) > maxNameLength {
-		sdk.Abort("name too long")
-	}
-	if len(c.Description) > maxDescLength {
-		sdk.Abort("description too long")
-	}
+// collectionKey returns the state key for a collection ID.
+func collectionKey(owner string, collectionId string) string {
+	return owner + ":" + collectionId
 }
 
-func collectionKey(collectionId uint64) string {
-	return "c:" + strconv.FormatUint(collectionId, 10)
-}
-
+// newCollectionID returns the next available collection ID from the counter.
 func newCollectionID() uint64 {
 	return getCount(CollectionCount)
 }

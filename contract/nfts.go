@@ -73,10 +73,10 @@ func Mint(payload *string) *string {
 	if input.Collection == nil {
 		sdk.Abort("collection is mandatory")
 	}
-
-	collection := loadCollection(*input.Collection)
 	creator := sdk.GetEnvKey("msg.sender")
-	validateMintArgs(input.Name, input.Description, input.Metadata, collection.Owner, *creator)
+	loadCollection(*creator, strconv.FormatUint(*input.Collection, 10))
+
+	validateMintArgs(input.Name, input.Description, input.Metadata, *creator)
 
 	// EditionsTotal must always be at least 1.
 	et := input.EditionsTotal
@@ -156,7 +156,7 @@ func Transfer(payload *string) *string {
 	// Load environment.
 	caller := sdk.GetEnvKey("msg.caller")
 	marketContract := getMarketContract()
-	targetCollection := loadCollection(input.Collection)
+	loadCollection(input.Owner.String(), strconv.FormatUint(input.Collection, 10))
 
 	// Validate full owner transfer.
 	if owner != input.Owner {
@@ -166,18 +166,13 @@ func Transfer(payload *string) *string {
 		if nft.SingleTransfer && nft.Creator != owner {
 			sdk.Abort("nft bound to owner")
 		}
-		if targetCollection.Owner != input.Owner {
-			sdk.Abort("target collection not owned by new owner")
-		}
+
 	}
 
 	// Validate collection-only transfer.
 	if collectionOnlyChange {
 		if !isAuthorized(caller, owner, marketContract) {
 			sdk.Abort("only NFT owner or market can change collection")
-		}
-		if targetCollection.Owner != input.Owner {
-			sdk.Abort("target collection not owned by new owner")
 		}
 	}
 
@@ -411,7 +406,6 @@ func validateMintArgs(
 	name string,
 	description string,
 	metadata map[string]string,
-	collectionOwner sdk.Address,
 	caller string,
 ) {
 	if name == "" {
@@ -423,9 +417,7 @@ func validateMintArgs(
 	if len(description) > maxDescLength {
 		sdk.Abort("description too long")
 	}
-	if collectionOwner.String() != caller {
-		sdk.Abort("not the owner")
-	}
+
 	if len(metadata) > maxMetaKeys {
 		sdk.Abort("too many meta keys")
 	}
