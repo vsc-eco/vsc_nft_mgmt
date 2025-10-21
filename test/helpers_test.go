@@ -28,9 +28,15 @@ func SetupContractTest() *test_utils.ContractTest {
 	CleanBadgerDB()
 	ct := test_utils.NewContractTest()
 	ct.RegisterContract(ContractID, ownerAddress, ContractWasm)
-	ct.Deposit("hive:someone", 1000, ledgerDb.AssetHive)
-	ct.Deposit("hive:someone", 1000, ledgerDb.AssetHbd)
+	ct.Deposit("hive:sender", 1000, ledgerDb.AssetHive)
+	ct.Deposit("hive:sender", 1000, ledgerDb.AssetHbd)
 	return &ct
+}
+func PrintBalances(ct *test_utils.ContractTest, addresses []string) {
+	bal := ct.GetBalance("hive:sender", ledgerDb.AssetHive)
+	fmt.Printf("sender: %d %s\n", bal, ledgerDb.AssetHive)
+	bal = ct.GetBalance("hive:receiver", ledgerDb.AssetHive)
+	fmt.Printf("receiver: %d %s\n", bal, ledgerDb.AssetHive)
 }
 
 // clean the db for multiple (sequential) tests

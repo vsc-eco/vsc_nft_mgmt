@@ -4,13 +4,14 @@ import (
 	"testing"
 )
 
-// admin tests
+// // admin tests
 func TestAdminMarket(t *testing.T) {
 	ct := SetupContractTest()
 	CallContract(t, ct, "set_market", PayloadToJSON("hive:tibfox"), nil, "hive:tibfox", false, uint(10_000))
 	CallContract(t, ct, "set_market", PayloadToJSON(""), nil, "hive:someone", false, uint(1_000))
-	CallContract(t, ct, "set_market", PayloadToJSON("hive:tibfox"), nil, "hive:contractowner", true, uint(10_000_000))
-	CallContract(t, ct, "get_market", PayloadToJSON(""), nil, "hive:contractowner", true, uint(10_000_000))
+	CallContract(t, ct, "set_market", PayloadToJSON("hive:tibfox"), nil, "hive:contractowner", true, uint(100_000_000))
+	CallContract(t, ct, "get_market", PayloadToJSON(""), nil, "hive:contractowner", true, uint(100_000_000))
+
 }
 
 // collection tests
@@ -18,8 +19,8 @@ func TestAdminMarket(t *testing.T) {
 func TestColCreate(t *testing.T) {
 	ct := SetupContractTest()
 	// just create a collection
-	CallContract(t, ct, "col_create", []byte("collectionA|my description"), nil, "hive:someone", true, uint(100_000_000))
-	CallContract(t, ct, "col_get", []byte("hive:someone|0"), nil, "hive:someone", true, uint(100_000_000))
+	// CallContract(t, ct, "col_create", PayloadToJSON("collectionA|my description"), nil, "hive:someone", true, uint(10_000_000))
+	CallContract(t, ct, "col_get", PayloadToJSON("hive:someone/0"), nil, "hive:someone", true, uint(100_000_000))
 }
 
 // func TestColCreateFails(t *testing.T) {

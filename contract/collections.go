@@ -16,6 +16,7 @@ const (
 //
 //go:wasmexport col_create
 func CreateCollection(payload *string) *string {
+	sdk.Log("collection start")
 	if payload == nil || *payload == "" {
 		sdk.Abort("input CSV is nil or empty")
 	}
@@ -25,8 +26,12 @@ func CreateCollection(payload *string) *string {
 		sdk.Abort("invalid CSV format: expected 2 fields (Name|Description)")
 	}
 
+	sdk.Log("collection args parsed")
+
 	name := parts[0]
 	description := parts[1]
+	sdk.Log(name)
+	sdk.Log(description)
 
 	if name == "" {
 		sdk.Abort("name is mandatory")
@@ -37,11 +42,15 @@ func CreateCollection(payload *string) *string {
 	if len(description) > maxDescLength {
 		sdk.Abort("description too long")
 	}
+	sdk.Log("collection args validated")
 
 	creator := sdk.GetEnvKey("msg.sender")
-	collectionId := newCollectionID()
+	sdk.Log(*creator)
+	collectionId := getCount(CollectionCount)
+	sdk.Log(fmt.Sprintf("%d", collectionId))
 
 	saveCollection(collectionId, name, description, *creator)
+	sdk.Log("collection stored")
 	return nil
 }
 
@@ -49,22 +58,14 @@ func CreateCollection(payload *string) *string {
 //
 //go:wasmexport col_get
 func GetCollection(payload *string) *string {
-	if payload == nil || *payload == "" {
-		sdk.Abort("input CSV is nil or empty")
-	}
-
-	parts := strings.Split(*payload, "|")
-	if len(parts) != 2 {
-		sdk.Abort("invalid CSV format: expected 2 fields (owner|collectionID)")
-	}
-
-	collection := loadCollection(parts[0], parts[1])
+	collection := loadCollection(*payload)
 	jsonStr := ToJSON(collection, "collection")
 	return &jsonStr
 }
 
 // saveCollection persists a collection to state and emits a creation event.
 func saveCollection(ID uint64, name string, description string, owner string) error {
+	// ! continue here
 	buf := make([]byte, 0, len(name)+len(description)+1)
 	buf = append(buf, name...)
 	buf = append(buf, '|')
@@ -82,21 +83,15 @@ func saveCollection(ID uint64, name string, description string, owner string) er
 }
 
 // loadCollection retrieves a collection from state by ID.
-func loadCollection(owner string, id string) *string {
-	key := collectionKey(owner, id)
-	ptr := sdk.StateGetObject(key)
+func loadCollection(ownerCollection string) *string {
+	ptr := sdk.StateGetObject(ownerCollection)
 	if ptr == nil || *ptr == "" {
-		sdk.Abort(fmt.Sprintf("collection %s:%s not found", owner, id))
+		sdk.Abort(fmt.Sprintf("%s not found", ownerCollection))
 	}
 	return ptr
 }
 
 // collectionKey returns the state key for a collection ID.
 func collectionKey(owner string, collectionId string) string {
-	return owner + ":" + collectionId
-}
-
-// newCollectionID returns the next available collection ID from the counter.
-func newCollectionID() uint64 {
-	return getCount(CollectionCount)
+	return owner + "/" + collectionId
 }

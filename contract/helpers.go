@@ -45,8 +45,8 @@ func UInt64ToString(val uint64) string {
 // indexing helpers
 
 const (
-	NFTsCount       = "cnt:n" //                  // holds a int counter for nfts (to create new ids)
-	CollectionCount = "cnt:c" //                  // holds a int counter for collections (to create new ids)
+	NFTsCount       = "cn" //                  // holds a int counter for nfts (to create new ids)
+	CollectionCount = "cc" //                  // holds a int counter for collections (to create new ids)
 )
 
 // ---- helpers ----

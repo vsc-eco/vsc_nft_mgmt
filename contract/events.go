@@ -2,6 +2,7 @@ package main
 
 import (
 	"strconv"
+	"strings"
 	"vsc_nft_mgmt/sdk"
 )
 
@@ -22,24 +23,24 @@ func emitEvent(eventType string, attributes map[string]string) {
 
 // EmitTransferEvent emits an event for an NFT transfer.
 // The id may be a base NFT ID or an edition ID in the format "nftId:editionIndex".
-func EmitTransferEvent(nftID string, fromAddress, toAddress string, fromCollection, toCollection uint64) {
+func EmitTransferEvent(nftID string, fromAddress, toAddress string, fromCollection, toCollection string) {
 	emitEvent("t", map[string]string{
 		"id":   nftID,
 		"f":    fromAddress,
 		"t":    toAddress,
-		"fCol": UInt64ToString(fromCollection),
-		"tCol": UInt64ToString(toCollection),
+		"fCol": fromCollection,
+		"tCol": toCollection,
 	})
 }
 
 // EmitMintEvent emits an event for NFT minting.
 // editionsTotal is included only if greater than zero.
-func EmitMintEvent(nftID uint64, mintedByAddress, receiverAddress string, collection uint64, editionsTotal uint32) {
+func EmitMintEvent(nftID uint64, mintedByAddress, ownerCollection string, editionsTotal uint32) {
 	attrs := map[string]string{
 		"id":   UInt64ToString(nftID),
 		"c":    mintedByAddress,
-		"t":    receiverAddress,
-		"tCol": UInt64ToString(collection),
+		"t":    strings.Split(ownerCollection, "/")[0],
+		"tCol": strings.Split(ownerCollection, "/")[1],
 	}
 	if editionsTotal > 0 {
 		attrs["edCnt"] = strconv.FormatInt(int64(editionsTotal), 10)
@@ -49,11 +50,11 @@ func EmitMintEvent(nftID uint64, mintedByAddress, receiverAddress string, collec
 
 // EmitBurnEvent emits an event for burning an NFT or edition.
 // The id may be a base NFT ID or an edition ID in the format "nftId:editionIndex".
-func EmitBurnEvent(nftID string, ownerAddress string, collection uint64) {
+func EmitBurnEvent(nftID string, ownerAddress string, collection string) {
 	emitEvent("b", map[string]string{
 		"id":  nftID,
 		"c":   ownerAddress,
-		"col": UInt64ToString(collection),
+		"col": collection,
 	})
 }
 
