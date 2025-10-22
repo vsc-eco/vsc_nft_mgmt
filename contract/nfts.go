@@ -6,130 +6,184 @@ import (
 	"vsc_nft_mgmt/sdk"
 )
 
-// ============ Data Shapes (getter-only JSON)
-// We keep this minimal and only for Get* responses.
+//
+// ==================================
+// NFT Data Structures (Getter Only)
+// ==================================
+//
+// These structs are not persisted directly in state. They represent
+// logical "views" returned by nft_get and are marshaled to JSON manually.
+// Keeping them minimal reduces gas and improves clarity.
+//
+
+// NFT represents the immutable core + current owner state of a base NFT.
+// It does *not* hold edition overrides.
 type NFT struct {
-	ID           uint64
-	Creator      string
-	OwnerCol     string
-	CreationTxID string
-	Name         string
-	Desc         string
-	Meta         string
-	EdTotal      uint32
+	ID           uint64 // unique numeric id of the NFT
+	Creator      string // address that created the NFT
+	OwnerCol     string // "<owner>_<collection>" for current owner
+	CreationTxID string // tx id when the NFT was minted
+	Name         string // display name
+	Desc         string // short description
+	Meta         string // metadata URI or payload (opaque)
+	EdTotal      uint32 // total number of editions (1 = no editions)
 }
 
+// NFTResponse is a higher-level view exposed via nft_get. It adds
+// edition-specific context such as index and burned flag.
 type NFTResponse struct {
 	NFT
-	EditionIndex *uint32
-	Burned       bool
+	EditionIndex *uint32 // nil for base, or edition number if specified
+	Burned       bool    // indicates if this edition is considered destroyed
 }
 
-// ============ Exported ABI (string-only) ==========
+//
+// ==================================
+// Public Contract Entry Points (WASM)
+// ==================================
+// These methods define the NFT lifecycle and are callable by external users.
+//
 
+// Mint issues a new NFT under an existing collection.
+// Payload format: "<owner>_<collection>|<name>|<desc>|<singleTransfer>|<editions>|<metadata>"
+// - singleTransfer="true" means NFT is non-transferable away from creator (soulbound-like)
+// - editions defaults to 1 if the field is empty
+// After state writes, a mint event is emmited.
+//
+// Gas tweaks applied:
+// - Parse editions directly from parts[4] (no idxStart/idxEnd walk)
+// - Read NFT counter once (reuse for setCount)
+// - Cache env lookups (creator) in locals
+//
 //go:wasmexport nft_mint
 func Mint(payload *string) *string {
-	// Payload: "<owner>_<collection>|<name>|<desc>|<singleTransfer>|<editions>|<metadata>"
 	if payload == nil || *payload == "" {
 		sdk.Abort("empty payload")
 	}
 	p := *payload
-
-	// split into 6 parts; metadata may be empty but must be present
 	parts := splitFixedPipe(p, 6)
+
 	ownerCol := parts[0]
 	name := parts[1]
 	desc := parts[2]
 	single := parts[3] == "true"
-	// editions field
-	edStart := idxStart(parts, 4)
-	edEnd := idxEnd(parts, 4)
-	var editions uint32 = 1 // default
-	if edEnd > edStart {    // only parse if non-empty
-		editions = parseUint32Field(p, edStart, edEnd)
-	}
-	meta := parts[5] // stored exactly as provided
 
+	// editions: empty -> 1 (fast path: parse directly from parts[4])
+	var editions uint32 = 1
+	if edStr := parts[4]; len(edStr) > 0 {
+		editions = parseUint32Field(edStr, 0, len(edStr))
+	}
+
+	meta := parts[5]
 	if ownerCol == "" {
 		sdk.Abort("collection is mandatory")
 	}
-	loadCollection(ownerCol)          // validate existence via collections index
-	validateMintArgs(name, desc, nil) // metadata is opaque
 
+	// Validate arguments and collection existence
+	loadCollection(ownerCol) // ensures "<owner>_<collection>" exists
+	validateMintArgs(name, desc)
+
+	// Create NFT (read counter once; reuse for setCount)
 	nftID := newNFTID()
-	creator := sdk.GetEnvKey("msg.sender")
+	creatorPtr := sdk.GetEnvKey("msg.sender")
+	creator := *creatorPtr
 
 	saveNFTCore(nftID, name, desc, meta)
-	saveNFTCreator(nftID, *creator, single)
+	saveNFTCreator(nftID, creator, single)
 	saveNFTOwnerCollection(nftID, ownerCol)
 	if editions > 1 {
 		saveNFTEditionCount(nftID, editions)
 	}
 
-	EmitMintEvent(nftID, *creator, ownerCol, editions)
-	setCount(NFTsCount, nftID+1)
+	EmitMintEvent(nftID, creator, ownerCol, editions)
+	setCount(NFTsCount, nftID+1) // reuse same counter value
 	return nil
 }
 
-//go:wasmexport nft_transfer
+// ==================================
+// NFT Transfer Logic
+// ==================================
+//
+// Transfer moves ownership of either an entire NFT or a specific edition.
+// Payload format: "<nftID>|<editionIndex>|<owner>_<collection>"
+// - If editionIndex is empty, it defaults to 0 (base).
+// - Moving editions uses override storage; base NFTs update main owner.
+// - Edition override is only used if EdTotal > 1.
+//
+// Micro-optimizations:
+// - Cached caller and market values
+// - Avoid string mutations on nft.OwnerCol
+// - Use direct parse on parts[1] for edition
+//
 //go:wasmexport nft_transfer
 func Transfer(payload *string) *string {
-	// Payload: "<nftID>|<editionIndex>|<owner>_<collection>"
 	if payload == nil || *payload == "" {
 		sdk.Abort("empty payload")
 	}
 	parts := splitFixedPipe(*payload, 3)
 
-	// Parse nftID
+	// Parse NFT ID (always present)
 	id := parseUint64Field(parts[0], 0, len(parts[0]))
 
-	// Parse edition (default = 0 if empty)
-	var ed uint32 = 0
-	if len(parts[1]) > 0 {
-		ed = parseUint32Field(parts[1], 0, len(parts[1]))
+	// Parse optional edition, default = 0
+	var ed uint32
+	if edStr := parts[1]; len(edStr) > 0 {
+		ed = parseUint32Field(edStr, 0, len(edStr))
+	} else {
+		ed = 0
 	}
-
 	target := parts[2]
+
+	// Load edition count and base ownership
 	nftEdTotal := loadNFTEditionCount(id)
 	nftOwnerCol := loadNFTOwnerCollection(id)
 
+	// Determine effective edition ownership
 	var effectiveEd uint32
 	if *nftEdTotal > 1 {
 		effectiveEd = ed
 		if effectiveEd >= *nftEdTotal {
 			sdk.Abort("edition index out of range")
 		}
+		// Use override state if exists
 		resolved := resolveEditionOwnerAndCollection(id, *nftOwnerCol, effectiveEd)
 		nftOwnerCol = &resolved
 	} else {
 		effectiveEd = 0
 	}
 
+	// Prevent sending to same owner/collection
 	if *nftOwnerCol == target {
 		sdk.Abort("source and target are the same")
 	}
 
+	// Identify owners (just strings)
 	currentOwner, _ := splitOwnerCollection(*nftOwnerCol, "nftownercol")
 	targetOwner, _ := splitOwnerCollection(target, "targetownercol")
 	collectionOnly := currentOwner == targetOwner
 
+	// Cached env keys
 	caller := sdk.GetEnvKey("msg.caller")
 	market := getMarketContract()
 
+	// Authorization logic
 	if !collectionOnly {
+		// actual owner change
 		if !isAuthorized(caller, &currentOwner, market) {
 			sdk.Abort("only market or owner can transfer")
 		}
-		nftCreator, single := loadNFTCreator(id)
-		if single && *nftCreator != currentOwner {
+		creator, single := loadNFTCreator(id)
+		if single && *creator != currentOwner {
 			sdk.Abort("nft bound to owner")
 		}
 	} else {
+		// collection change only
 		if !isAuthorized(caller, &currentOwner, market) {
 			sdk.Abort("only owner/market can change collection")
 		}
 	}
 
+	// Perform state write
 	if *nftEdTotal > 1 {
 		saveEditionOverride(id, effectiveEd, target)
 		emitTransfer(id, &effectiveEd, *nftOwnerCol, target)
@@ -138,24 +192,38 @@ func Transfer(payload *string) *string {
 		emitTransfer(id, nil, *nftOwnerCol, target)
 	}
 
+	// Update owner edition index only on true owner transfer
 	if *nftEdTotal > 1 && !collectionOnly {
 		addEditionToOwnerMapping(id, effectiveEd, targetOwner)
 	}
+
 	return nil
 }
 
-//go:wasmexport nft_burn
+// ==================================
+// NFT Burn Logic
+// ==================================
+//
+// Payload formats:
+//
+//	"<nftID>"           → burn data for full NFT
+//	"<nftID>|<edition>" → burn a specific edition
+//
+// When burning full NFT, we reset state to reflect owner, and record burn.
+// Burn is logical: does not delete base data to preserve history.
+//
 //go:wasmexport nft_burn
 func Burn(nftId *string) *string {
-	// Payload: "<nftID>" or "<nftID>|<editionIndex>"
 	if nftId == nil || *nftId == "" {
 		sdk.Abort("empty id")
 	}
 	p := *nftId
 	idx := indexByte(p, '|')
+
 	var nftID uint64
 	var edPtr *uint32
 
+	// Parse ID and optional edition index
 	if idx == -1 {
 		nftID = parseUint64Field(p, 0, len(p))
 	} else {
@@ -166,56 +234,66 @@ func Burn(nftId *string) *string {
 		}
 	}
 
-	// Load NFT and split owner/collection
+	// Load base NFT
 	nft := loadNFT(nftID)
-	owner, collection := splitOwnerCollection(nft.OwnerCol, "owncol")
+	owner, collection := splitOwnerCollection(nft.OwnerCol, "burnOwnerCheck")
 
-	// Authorization check: only owner or market can burn
+	// Cached env
 	caller := sdk.GetEnvKey("msg.caller")
 	market := getMarketContract()
+
+	// Authorization: only owner or market
 	if !isAuthorized(caller, &owner, market) {
 		sdk.Abort("only owner or market can burn")
 	}
 
-	// Get edition count
 	edCount := loadNFTEditionCount(nftID)
 
 	if edPtr != nil {
+		// burn single edition
 		if *edCount <= 1 {
 			sdk.Abort("NFT has no editions")
 		}
 		if *edPtr >= *edCount {
 			sdk.Abort("edition index out of range")
 		}
-		// properly mark edition as burned (creates override if missing)
 		markEditionBurned(nftID, *edPtr)
 	} else {
-		// burn entire nft base
-		saveNFTOwnerCollection(nftID, owner+"_"+collection)
+		// burn entire NFT → we keep same owner/collection (no concat to prevent alloc)
+		saveNFTOwnerCollection(nftID, nft.OwnerCol)
 	}
 
 	emitBurn(nftID, edPtr, owner, collection)
 	return nil
 }
 
+//
+// ==========================================
+// NFT Query Functions (Public ABI)
+// ==========================================
+
+// GetNFT returns a minimal JSON description of either the base NFT
+// or a specific edition. Edition overrides (owner/burn) are resolved
+// automatically if present.
+//
+// Payload formats:
+//
+//	"<id>"
+//	"<id>|<editionIndex>"
+//
 //go:wasmexport nft_get
 func GetNFT(payload *string) *string {
-	// Payload: "<nftID>" or "<nftID>|<editionIndex>"
 	if payload == nil || *payload == "" {
 		sdk.Abort("empty id")
 	}
 	p := *payload
-
-	// Detect if edition specified (pipe exists)
 	idx := indexByte(p, '|')
+
 	var nftID uint64
 	var edPtr *uint32
-
 	if idx == -1 {
-		// Only NFT ID
 		nftID = parseUint64Field(p, 0, len(p))
 	} else {
-		// Split manually to avoid allocations
 		nftID = parseUint64Field(p, 0, idx)
 		if idx < len(p)-1 {
 			ed := parseUint32Field(p, idx+1, len(p))
@@ -223,26 +301,32 @@ func GetNFT(payload *string) *string {
 		}
 	}
 
+	// Load NFT core data
 	nft := loadNFT(nftID)
+	ownerCol := nft.OwnerCol // work with a local variable
 
-	// Build minimal JSON manually for speed
-	b := make([]byte, 0, 128+len(nft.Creator)+len(nft.OwnerCol)+len(nft.Name)+len(nft.Desc)+len(nft.Meta)+len(nft.CreationTxID))
+	// Resolve edition override if applicable
+	if edPtr != nil && nft.EdTotal > 1 {
+		if eo := loadEditionOverride(nftID, *edPtr); eo != nil {
+			ownerCol = eo.OwnerCollection
+		}
+	}
+
+	// Build minimal JSON manually
+	b := make([]byte, 0, 128+len(nft.Creator)+len(ownerCol)+len(nft.Name)+len(nft.Desc)+len(nft.Meta)+len(nft.CreationTxID))
 	b = append(b, '{', '"', 'i', 'd', '"', ':')
 	b = strconv.AppendUint(b, nft.ID, 10)
+
 	if edPtr != nil && nft.EdTotal > 1 {
 		b = append(b, ',', '"', 'e', 'd', '"', ':')
 		b = strconv.AppendUint(b, uint64(*edPtr), 10)
 	}
+
+	// "c": creator
 	b = append(b, ',', '"', 'c', '"', ':', '"')
 	b = append(b, nft.Creator...)
 	b = append(b, '"', ',', '"', 'o', 'c', '"', ':', '"')
-	// if an edition override exists, surface it in getter
-	if edPtr != nil && nft.EdTotal > 1 {
-		if eo := loadEditionOverride(nftID, *edPtr); eo != nil {
-			nft.OwnerCol = eo.OwnerCollection
-		}
-	}
-	b = append(b, nft.OwnerCol...)
+	b = append(b, ownerCol...)
 	b = append(b, '"', ',', '"', 't', 'x', '"', ':', '"')
 	b = append(b, nft.CreationTxID...)
 	b = append(b, '"', ',', '"', 'n', '"', ':', '"')
@@ -259,9 +343,11 @@ func GetNFT(payload *string) *string {
 	return &json
 }
 
+// GetNFTOwnedEditions returns a CSV list of edition indices for a given owner.
+// Payload: "<nftID>,<owner>"
+//
 //go:wasmexport nft_hasNFTEdition
 func GetNFTOwnedEditions(payload *string) *string {
-	// Payload: "<nftID>,<ownerAddress>"
 	if payload == nil || *payload == "" {
 		sdk.Abort("empty payload")
 	}
@@ -276,6 +362,7 @@ func GetNFTOwnedEditions(payload *string) *string {
 		empty := ""
 		return &empty
 	}
+
 	buf := []byte(*ptr)
 	N := len(buf) / 4
 
@@ -287,12 +374,15 @@ func GetNFTOwnedEditions(payload *string) *string {
 	return &csv
 }
 
-// ============ Internal state IO ============
+//
+// =======================================
+// Internal State I/O for NFT Core
+// =======================================
 
+// saveNFTCore stores immutable metadata in compact pipe-delimited format.
 func saveNFTCore(nftID uint64, name, desc, meta string) {
-	// txID|version|name|desc|meta
 	txID := sdk.GetEnvKey("tx.id")
-	b := make([]byte, 0, len(*txID)+1+3+1+len(name)+1+len(desc)+1+len(meta))
+	b := make([]byte, 0, len(*txID)+1+len(name)+1+len(desc)+1+len(meta))
 	b = append(b, (*txID)...)
 	b = append(b, '|')
 	b = append(b, name...)
@@ -303,17 +393,18 @@ func saveNFTCore(nftID uint64, name, desc, meta string) {
 	sdk.StateSetObject(nftCoreKey(nftID), string(b))
 }
 
+// loadNFT reads core NFT data + creator, ownership, edition count.
 func loadNFT(nftID uint64) *NFT {
 	core := sdk.StateGetObject(nftCoreKey(nftID))
 	if core == nil || *core == "" {
 		sdk.Abort("nft not found")
 	}
-	// parse core: tx|v|name|desc|meta
 	tx, name, desc, meta := parse4(*core)
 
 	creator, _ := loadNFTCreator(nftID)
 	ownerCol := loadNFTOwnerCollection(nftID)
 	ed := loadNFTEditionCount(nftID)
+
 	return &NFT{
 		ID:           nftID,
 		Creator:      *creator,
@@ -326,16 +417,22 @@ func loadNFT(nftID uint64) *NFT {
 	}
 }
 
+// saveNFTCreator stores creator + singleTransfer flag with minimal allocations.
+// Format: "creator|1" for restricted transfer, "creator|0" otherwise.
 func saveNFTCreator(nftID uint64, creator string, singleTransfer bool) {
-	val := creator
+	// Pre-size buffer: creator length + 2 bytes ("|" + flag)
+	b := make([]byte, 0, len(creator)+2)
+	b = append(b, creator...)
+	b = append(b, '|')
 	if singleTransfer {
-		val += "|1"
+		b = append(b, '1')
 	} else {
-		val += "|0"
+		b = append(b, '0')
 	}
-	sdk.StateSetObject(creatorKey(nftID), val)
+	sdk.StateSetObject(creatorKey(nftID), string(b))
 }
 
+// loadNFTCreator returns (creatorAddress, isSingleTransferRestricted).
 func loadNFTCreator(nftID uint64) (*string, bool) {
 	ptr := sdk.StateGetObject(creatorKey(nftID))
 	if ptr == nil || *ptr == "" {
@@ -358,18 +455,24 @@ func loadNFTOwnerCollection(nftID uint64) *string {
 }
 
 func saveNFTEditionCount(nftID uint64, cnt uint32) {
-	sdk.StateSetObject(editionCountKey(nftID), strconv.FormatUint(uint64(cnt), 10))
+	b := make([]byte, 0, 11)
+	b = strconv.AppendUint(b, uint64(cnt), 10)
+	sdk.StateSetObject(editionCountKey(nftID), string(b))
 }
 
 func loadNFTEditionCount(nftID uint64) *uint32 {
 	ptr := sdk.StateGetObject(editionCountKey(nftID))
 	if ptr == nil || *ptr == "" {
-		one := uint32(1) // default is 1 (no editions)
+		one := uint32(1)
 		return &one
 	}
-	v := stringToUint32(ptr)
-	return v
+	return stringToUint32(ptr)
 }
+
+//
+// ===========================
+// Edition Overrides & Burning
+// ===========================
 
 type EditionOverride struct {
 	OwnerCollection string
@@ -377,8 +480,7 @@ type EditionOverride struct {
 }
 
 func editionOverrideToStr(eo EditionOverride) string {
-	// owner|b (0/1)
-	b := make([]byte, 0, len(eo.OwnerCollection)+3)
+	b := make([]byte, 0, len(eo.OwnerCollection)+2)
 	b = append(b, eo.OwnerCollection...)
 	b = append(b, '|')
 	if eo.Burned {
@@ -390,8 +492,8 @@ func editionOverrideToStr(eo EditionOverride) string {
 }
 
 func parseEditionOverride(s string) EditionOverride {
-	owner, b := split2Str(s)
-	return EditionOverride{OwnerCollection: owner, Burned: b == "1"}
+	owner, f := split2Str(s)
+	return EditionOverride{OwnerCollection: owner, Burned: f == "1"}
 }
 
 func saveEditionOverride(nftID uint64, editionIndex uint32, ownerCollection string) {
@@ -405,19 +507,13 @@ func markEditionBurned(nftID uint64, editionIndex uint32) {
 	ptr := sdk.StateGetObject(key)
 
 	var eo EditionOverride
-
 	if ptr == nil || *ptr == "" {
-		// No override exists yet, so create one and set burned
 		baseOwnerCol := *loadNFTOwnerCollection(nftID)
-		eo = EditionOverride{
-			OwnerCollection: baseOwnerCol,
-			Burned:          true,
-		}
+		eo = EditionOverride{OwnerCollection: baseOwnerCol, Burned: true}
 	} else {
 		eo = parseEditionOverride(*ptr)
 		eo.Burned = true
 	}
-
 	sdk.StateSetObject(key, editionOverrideToStr(eo))
 }
 
@@ -430,6 +526,11 @@ func loadEditionOverride(nftID uint64, editionIndex uint32) *EditionOverride {
 	return &eo
 }
 
+//
+// ================================
+// Owner Edition Index Data Mapping
+// ================================
+
 func addEditionToOwnerMapping(nftID uint64, editionIndex uint32, owner string) {
 	key := ownedIndexKey(nftID, owner)
 	ptr := sdk.StateGetObject(key)
@@ -437,9 +538,9 @@ func addEditionToOwnerMapping(nftID uint64, editionIndex uint32, owner string) {
 	if ptr != nil && *ptr != "" {
 		buf = []byte(*ptr)
 	}
-	var b [4]byte
-	binary.BigEndian.PutUint32(b[:], editionIndex)
-	buf = append(buf, b[:]...)
+	var tmp [4]byte
+	binary.BigEndian.PutUint32(tmp[:], editionIndex)
+	buf = append(buf, tmp[:]...)
 	sdk.StateSetObject(key, string(buf))
 }
 
@@ -450,7 +551,12 @@ func resolveEditionOwnerAndCollection(nftID uint64, base string, editionIndex ui
 	return base
 }
 
-// ============ Tiny parsing helpers (fast, no alloc) ============
+//
+// ==========================
+// Tiny Parsing Utilities
+// ==========================
+//
+// These are on the hot path and written with zero-alloc intent.
 
 func idxStart(parts []string, i int) int {
 	pos := 0
@@ -459,6 +565,7 @@ func idxStart(parts []string, i int) int {
 	}
 	return pos
 }
+
 func idxEnd(parts []string, i int) int { return idxStart(parts, i) + len(parts[i]) }
 
 func split2Str(s string) (string, string) {
@@ -469,4 +576,20 @@ func split2Str(s string) (string, string) {
 	}
 	sdk.Abort("invalid 2-field state")
 	return "", ""
+}
+
+// ----------------------------------------
+// Mint Argument Validation
+// ----------------------------------------
+//
+// validateMintArgs performs structural checks when creating new NFTs
+// such as length constraints. Metadata is considered opaque and therefore
+// not validated here.
+func validateMintArgs(name, desc string) {
+	if len(name) == 0 || len(name) > maxNameLength {
+		abort("invalid name length")
+	}
+	if len(desc) > maxDescLength {
+		abort("description too long")
+	}
 }

@@ -16,7 +16,7 @@ func TestAdminMarket(t *testing.T) {
 
 // // collection tests
 
-func TestColCreate(t *testing.T) {
+func TestColCreateSuccess(t *testing.T) {
 	ct := SetupContractTest()
 	// just create a collection
 	CallContract(t, ct, "col_create", []byte("collectionA|my description|img=testurl"), nil, "hive:someone", true, uint(1_000_000_000))
@@ -40,19 +40,18 @@ func TestColCreateFails(t *testing.T) {
 		nil, "hive:someone", false, uint(100_000_000))
 }
 
-func TestMintUniqueNFTSinglew(t *testing.T) {
+func TestMintUniqueNFTSingleSuccess(t *testing.T) {
 	ct := SetupContractTest()
 	// create a collection
 	CallContract(t, ct, "col_create", []byte("collectionA|my description|img=testurl"), nil, "hive:someone", true, uint(1_000_000_000))
-	CallContract(t, ct, "col_create", []byte("collectionB|my description|img=testurl"), nil, "hive:someoneelse", true, uint(1_000_000_000))
 	// mint without edition value
 	CallContract(t, ct, "nft_mint",
-		[]byte("hive:someone_0|name|description|true||test=123,test2=abc"),
+		[]byte("hive:someone_0|n||true||"),
 		nil, "hive:someone", true, uint(1_000_000_000))
 }
 
 // // nft tests
-func TestMintUniqueNFT(t *testing.T) {
+func TestMintUniqueNFTSuccess(t *testing.T) {
 	ct := SetupContractTest()
 	// create a collection
 	CallContract(t, ct, "col_create", []byte("collectionA|my description|img=testurl"), nil, "hive:someone", true, uint(1_000_000_000))
@@ -84,7 +83,7 @@ func TestMintUniqueNFT(t *testing.T) {
 }
 
 // mint editions
-func TestMintEditions(t *testing.T) {
+func TestMintEditionsSuccess(t *testing.T) {
 	ct := SetupContractTest()
 	// create a collection
 	CallContract(t, ct, "col_create", []byte("collectionA|my description|img=testurl"), nil, "hive:someone", true, uint(1_000_000_000))
@@ -135,7 +134,7 @@ func TestMintUniqueNFTFails(t *testing.T) {
 }
 
 // burn
-func TestBurn(t *testing.T) {
+func TestBurnSuccess(t *testing.T) {
 	ct := SetupContractTest()
 	// create a collection
 	CallContract(t, ct, "col_create", []byte("collectionA|my description|img=testurl"), nil, "hive:someone", true, uint(1_000_000_000))
@@ -157,7 +156,7 @@ func TestBurn(t *testing.T) {
 
 }
 
-func TestBurnEdition(t *testing.T) {
+func TestBurnEditionSuccess(t *testing.T) {
 	ct := SetupContractTest()
 	// set market
 	CallContract(t, ct, "set_market", PayloadToJSON("hive:marketaddress"), nil, "hive:contractowner", true, uint(1_000_000_000))
@@ -202,7 +201,7 @@ func TestBurnFails(t *testing.T) {
 		nil, "hive:someoneelse", false, uint(1_000_000_000))
 }
 
-func TestTransfers(t *testing.T) {
+func TestTransfersSuccess(t *testing.T) {
 	ct := SetupContractTest()
 	// set market
 	CallContract(t, ct, "set_market", PayloadToJSON("hive:marketaddress"), nil, "hive:contractowner", true, uint(1_000_000_000))

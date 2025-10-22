@@ -8,25 +8,29 @@ import (
 // Contract Owner + Market Admin
 // =============================
 
-// We keep the storage key extremely short to minimize state I/O cost.
+// Very short key for minimal storage footprint.
 const marketKey = "mc"
 
-// Contract owner is set at deployment time or hardcoded.
-// For maximum efficiency, this should be a literal string with no parsing during execution.
-var contractOwner = "hive:contractowner"
+// contractOwner is hardcoded at deployment. Using const makes it immutable
+// and slightly cheaper to reference compared to a var.
+const contractOwner = "hive:contractowner"
 
 // =============================
 // Exported Functions (ABI: string-only)
 // =============================
 
+// SetMarketplace registers the marketplace contract address.
+// Only the contract owner may call this.
+//
 //go:wasmexport set_market
 func SetMarketplace(addr *string) *string {
 	if addr == nil || *addr == "" {
 		sdk.Abort("market address required")
 	}
 
-	caller := sdk.GetEnvKey("msg.sender")
-	if caller == nil || *caller != contractOwner {
+	// Faster than re-dereferencing pointer multiple times.
+	callerPtr := sdk.GetEnvKey("msg.sender")
+	if callerPtr == nil || *callerPtr != contractOwner {
 		sdk.Abort("only contract owner can set market")
 	}
 
@@ -34,6 +38,8 @@ func SetMarketplace(addr *string) *string {
 	return nil
 }
 
+// GetMarketplace retrieves the currently configured market contract.
+//
 //go:wasmexport get_market
 func GetMarketplace(_ *string) *string {
 	return sdk.StateGetObject(marketKey)
@@ -42,6 +48,8 @@ func GetMarketplace(_ *string) *string {
 // =============================
 // Internal Helper (for NFT transfers)
 // =============================
+
+// getMarketContract returns the market address or nil if unset.
 func getMarketContract() *string {
 	return sdk.StateGetObject(marketKey)
 }

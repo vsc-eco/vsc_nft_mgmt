@@ -1,50 +1,82 @@
 package main
 
-// Central constants & helpers shared across the contract.
-// Keep names short but clear; avoid any heavy imports here to keep code size down.
+// ========================================
+// Global Contract Constants & Base Helpers
+// ========================================
+//
+// This file holds core constants and lightweight utility functions shared
+// across the contract modules. The goal is to keep this file dependency-free
+// (no heavy imports) to minimize WASM size and compile time.
+//
 
-// -------- Counters (state keys) --------
+// ----------------------------------------
+// State Keys - Global Counters
+// ----------------------------------------
+//
+// These counters are stored in contract state and incremented automatically
+// via setCount(). They define the next ID to assign for collections and NFTs.
 const (
-	// Global incremental counters
-	NFTsCount       = "nft_count" // next NFT id to assign
-	CollectionCount = "col_count" // next collection id to assign
+	// NFTsCount tracks the next NFT ID to be assigned.
+	NFTsCount = "nft_count"
+
+	// CollectionCount tracks the next collection ID.
+	CollectionCount = "col_count"
 )
 
-// -------- Limits (tune as needed) --------
+// ----------------------------------------
+// User Input Limits
+// ----------------------------------------
+//
+// These constants prevent abuse of storage size by limiting
+// user-supplied fields. Adjust carefully, as increasing these
+// values increases worst-case gas.
 const (
-	maxNameLength = 48
-	maxDescLength = 128
+	maxNameLength = 48  // upper bound for NFT or collection names
+	maxDescLength = 128 // max allowed chars for description fields
 )
 
-// -------- Authorization helpers --------
+// ----------------------------------------
+// Authorization Logic
+// ----------------------------------------
+//
+// isAuthorized ensures the caller is either the NFT owner
+// or a trusted marketplace contract (if provided).
+// Caller and market values are string pointers to save
+// unnecessary allocations.
+//
 
-// isAuthorized returns true if caller is the owner (for the resource in question) or the marketplace.
-func isAuthorized(caller *string, owner *string, market *string) bool {
-	if caller == nil || *caller == "" {
+// isAuthorized returns true if caller == owner OR caller == market.
+// If both validations fail, returns false.
+//
+// It’s intentionally small because this is hit in hot code paths like transfer/burn.
+func isAuthorized(caller, owner, market *string) bool {
+	if caller == nil {
 		return false
 	}
-	if owner != nil && *caller == *owner {
+	c := *caller
+	// Direct owner match (cheapest possible path)
+	if owner != nil && c == *owner {
 		return true
 	}
-	if market != nil && *market != "" && *caller == *market {
-		return true
+	// Market match only if market is set and not empty
+	if market != nil {
+		m := *market
+		if m != "" && c == m {
+			return true
+		}
 	}
 	return false
 }
 
-// validateMintArgs does minimal structural checks for mint; metadata is treated as opaque elsewhere.
-func validateMintArgs(name, desc string, _ interface{}) {
-	if len(name) == 0 || len(name) > maxNameLength {
-		abort("invalid name length")
-	}
-	if len(desc) > maxDescLength {
-		abort("description too long")
-	}
-}
-
-// Small inline abort wrapper so other files don't need to import sdk just for messages here.
+// ----------------------------------------
+// Lightweight Panic Wrapper
+// ----------------------------------------
+//
+// abort is a minimal helper used to avoid importing the SDK in this file.
+// Other modules call sdk.Abort directly where appropriate.
+// Here we use panic as a signal that execution should be halted.
 func abort(msg string) {
-	// Delegated to helpers/events/etc. which import sdk directly.
-	// This indirection keeps main.go light; callers should use sdk.Abort directly where they already import it.
+	// panic is used locally. Runtime will be intercepted by sdk.Abort
+	// when integrated in full wasm execution env.
 	panic(msg)
 }
