@@ -1,97 +1,140 @@
 package main
 
 import (
-	"fmt"
 	"strconv"
-	"strings"
 	"vsc_nft_mgmt/sdk"
 )
 
+// =============================
+// Collection binary key prefixes
+// =============================
 const (
-	maxNameLength = 25  // maxNameLength is the maximum length for collection or NFT names.
-	maxDescLength = 100 // maxDescLength is the maximum length for collection or NFT descriptions.
+	kColCore byte = 0x10 // id -> "tx|name|desc|meta"
 )
 
-// CreateCollection creates and saves a new collection.
-//
+// ASCII index: "<owner>_<collection>" → numeric ID (as string)
+func colIndexKey(owner, col string) string { return "c_" + owner + "_" + col }
+
+// =============================
+// Binary key builder
+// =============================
+func colCoreKey(id uint64) string {
+	b := make([]byte, 0, 1+8)
+	b = append(b, kColCore)
+	b = packU64LE(id, b)
+	return string(b)
+}
+
+// =============================
+// Exported ABI: string-only
+// =============================
+
 //go:wasmexport col_create
 func CreateCollection(payload *string) *string {
-	sdk.Log("collection start")
+	// Payload: "<name>|<desc>|<metadata>"
 	if payload == nil || *payload == "" {
-		sdk.Abort("input CSV is nil or empty")
+		sdk.Abort("empty payload")
 	}
-
-	parts := strings.Split(*payload, "|")
-	if len(parts) != 2 {
-		sdk.Abort("invalid CSV format: expected 2 fields (Name|Description)")
-	}
-
-	sdk.Log("collection args parsed")
-
+	p := *payload
+	parts := splitFixedPipe(p, 3)
 	name := parts[0]
-	description := parts[1]
-	sdk.Log(name)
-	sdk.Log(description)
+	desc := parts[1]
+	meta := parts[2]
 
-	if name == "" {
-		sdk.Abort("name is mandatory")
+	if len(name) == 0 || len(name) > maxNameLength {
+		sdk.Abort("invalid name length")
 	}
-	if len(name) > maxNameLength {
-		sdk.Abort("name too long")
-	}
-	if len(description) > maxDescLength {
+	if len(desc) > maxDescLength {
 		sdk.Abort("description too long")
 	}
-	sdk.Log("collection args validated")
 
-	creator := sdk.GetEnvKey("msg.sender")
-	sdk.Log(*creator)
-	collectionId := getCount(CollectionCount)
-	sdk.Log(fmt.Sprintf("%d", collectionId))
+	owner := *sdk.GetEnvKey("msg.sender")
+	colNumber := getCount(CollectionCount)
+	col := strconv.FormatUint(colNumber, 10)
 
-	saveCollection(collectionId, name, description, *creator)
-	sdk.Log("collection stored")
+	// Ensure not already exists
+	idxKey := colIndexKey(owner, col)
+	if ptr := sdk.StateGetObject(idxKey); ptr != nil && *ptr != "" {
+		sdk.Abort("collection exists")
+	}
+
+	id := getCount(CollectionCount)
+	txID := sdk.GetEnvKey("tx.id")
+
+	// Core format: tx|name|desc|meta
+	b := make([]byte, 0, len(*txID)+1+len(name)+1+len(desc)+1+len(meta))
+	b = append(b, (*txID)...)
+	b = append(b, '|')
+	b = append(b, name...)
+	b = append(b, '|')
+	b = append(b, desc...)
+	b = append(b, '|')
+	b = append(b, meta...)
+
+	sdk.StateSetObject(colCoreKey(id), string(b))
+	sdk.StateSetObject(idxKey, strconv.FormatUint(id, 10))
+
+	EmitCollectionCreatedEvent(id, owner)
+	setCount(CollectionCount, id+1)
 	return nil
 }
 
-// GetCollection returns a collection by its ID.
-//
 //go:wasmexport col_get
 func GetCollection(payload *string) *string {
-	collection := loadCollection(*payload)
-	jsonStr := ToJSON(collection, "collection")
-	return &jsonStr
-}
-
-// saveCollection persists a collection to state and emits a creation event.
-func saveCollection(ID uint64, name string, description string, owner string) error {
-	// ! continue here
-	buf := make([]byte, 0, len(name)+len(description)+1)
-	buf = append(buf, name...)
-	buf = append(buf, '|')
-	buf = append(buf, description...)
-	// Save collection object.
-	idKey := collectionKey(owner, strconv.FormatUint(ID, 10))
-	sdk.StateSetObject(idKey, string(buf))
-
-	// Emit creation event.
-	EmitCollectionCreatedEvent(ID, owner)
-
-	// Increment global collection counter.
-	setCount(CollectionCount, ID+uint64(1))
-	return nil
-}
-
-// loadCollection retrieves a collection from state by ID.
-func loadCollection(ownerCollection string) *string {
-	ptr := sdk.StateGetObject(ownerCollection)
-	if ptr == nil || *ptr == "" {
-		sdk.Abort(fmt.Sprintf("%s not found", ownerCollection))
+	// Payload: "<owner>_<collection>"
+	if payload == nil || *payload == "" {
+		sdk.Abort("empty id")
 	}
-	return ptr
+	ownerCol := *payload
+	owner, col := splitOwnerCollection(ownerCol, "collectionLookup")
+
+	// Validate via index
+	colIDPtr := sdk.StateGetObject(colIndexKey(owner, col))
+	if colIDPtr == nil || *colIDPtr == "" {
+		sdk.Abort("collection not found")
+	}
+	colID := mustParseUint64(*colIDPtr)
+
+	// Load core
+	corePtr := sdk.StateGetObject(colCoreKey(colID))
+	if corePtr == nil || *corePtr == "" {
+		sdk.Abort("collection core missing")
+	}
+	tx, name, desc, meta := parse4(*corePtr)
+
+	// JSON: {"id":N,"owner":"...","name":"...","desc":"...","meta":"...","tx":"..."}
+	b := make([]byte, 0, 64+len(owner)+len(name)+len(desc)+len(meta)+len(tx))
+	b = append(b, '{', '"', 'i', 'd', '"', ':')
+	b = strconv.AppendUint(b, colID, 10)
+	b = append(b, ',', '"', 'o', 'w', 'n', 'e', 'r', '"', ':', '"')
+	b = append(b, owner...)
+	b = append(b, '"', ',', '"', 'n', 'a', 'm', 'e', '"', ':', '"')
+	b = append(b, name...)
+	b = append(b, '"', ',', '"', 'd', 'e', 's', 'c', '"', ':', '"')
+	b = append(b, desc...)
+	b = append(b, '"', ',', '"', 'm', 'e', 't', 'a', '"', ':', '"')
+	b = append(b, meta...)
+	b = append(b, '"', ',', '"', 't', 'x', '"', ':', '"')
+	b = append(b, tx...)
+	b = append(b, '"', '}')
+
+	json := string(b)
+	return &json
 }
 
-// collectionKey returns the state key for a collection ID.
-func collectionKey(owner string, collectionId string) string {
-	return owner + "/" + collectionId
+// =============================
+// Helpers
+// =============================
+// loadCollection validates that a given "<owner>_<collection>" exists
+// and returns the collection ID as a *string.
+func loadCollection(ownerCollection string) *string {
+	if ownerCollection == "" {
+		sdk.Abort("empty collection id")
+	}
+	owner, col := splitOwnerCollection(ownerCollection, "collectionLookup")
+	ptr := sdk.StateGetObject(colIndexKey(owner, col))
+	if ptr == nil || *ptr == "" {
+		sdk.Abort("collection not found")
+	}
+	return ptr // This is the numeric collection ID as a string
 }

@@ -1,38 +1,47 @@
 package main
 
 import (
-	"fmt"
 	"vsc_nft_mgmt/sdk"
 )
 
-// ContractCreator is the address that deployed the contract and has admin rights.
-var ContractCreator = "hive:contractowner"
+// =============================
+// Contract Owner + Market Admin
+// =============================
 
-// SetMarketContract sets the address of the market contract.
-// Only the ContractCreator is authorized to call this function.
-//
+// We keep the storage key extremely short to minimize state I/O cost.
+const marketKey = "mc"
+
+// Contract owner is set at deployment time or hardcoded.
+// For maximum efficiency, this should be a literal string with no parsing during execution.
+var contractOwner = "hive:contractowner"
+
+// =============================
+// Exported Functions (ABI: string-only)
+// =============================
+
 //go:wasmexport set_market
-func SetMarketContract(address *string) *string {
-	if address == nil || *address == "" {
-		sdk.Abort("market address needed")
+func SetMarketplace(addr *string) *string {
+	if addr == nil || *addr == "" {
+		sdk.Abort("market address required")
 	}
-	sender := sdk.GetEnvKey("msg.sender")
-	if *sender != ContractCreator {
-		sdk.Abort(fmt.Sprintf("only %s can set", ContractCreator))
+
+	caller := sdk.GetEnvKey("msg.sender")
+	if caller == nil || *caller != contractOwner {
+		sdk.Abort("only contract owner can set market")
 	}
-	sdk.StateSetObject("mc", *address)
+
+	sdk.StateSetObject(marketKey, *addr)
 	return nil
 }
 
-// GetMarket returns the address of the market contract currently set.
-//
 //go:wasmexport get_market
-func GetMarket(id *string) *string {
-	return getMarketContract()
+func GetMarketplace(_ *string) *string {
+	return sdk.StateGetObject(marketKey)
 }
 
-// getMarketContract retrieves the stored market contract address from state.
+// =============================
+// Internal Helper (for NFT transfers)
+// =============================
 func getMarketContract() *string {
-	contract := sdk.StateGetObject("mc")
-	return contract
+	return sdk.StateGetObject(marketKey)
 }

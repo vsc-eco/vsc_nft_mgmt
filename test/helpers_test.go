@@ -9,7 +9,6 @@ import (
 
 	"vsc-node/lib/test_utils"
 	"vsc-node/modules/db/vsc/contracts"
-	ledgerDb "vsc-node/modules/db/vsc/ledger"
 	stateEngine "vsc-node/modules/state-processing"
 
 	"github.com/stretchr/testify/assert"
@@ -28,15 +27,7 @@ func SetupContractTest() *test_utils.ContractTest {
 	CleanBadgerDB()
 	ct := test_utils.NewContractTest()
 	ct.RegisterContract(ContractID, ownerAddress, ContractWasm)
-	ct.Deposit("hive:sender", 1000, ledgerDb.AssetHive)
-	ct.Deposit("hive:sender", 1000, ledgerDb.AssetHbd)
 	return &ct
-}
-func PrintBalances(ct *test_utils.ContractTest, addresses []string) {
-	bal := ct.GetBalance("hive:sender", ledgerDb.AssetHive)
-	fmt.Printf("sender: %d %s\n", bal, ledgerDb.AssetHive)
-	bal = ct.GetBalance("hive:receiver", ledgerDb.AssetHive)
-	fmt.Printf("receiver: %d %s\n", bal, ledgerDb.AssetHive)
 }
 
 // clean the db for multiple (sequential) tests
@@ -50,6 +41,7 @@ func CleanBadgerDB() {
 // CallContract executes a contract action and asserts basic success
 func CallContract(t *testing.T, ct *test_utils.ContractTest, action string, payload json.RawMessage, intents []contracts.Intent, authUser string, expectedResult bool, maxGas uint) (stateEngine.TxResult, uint, map[string][]string) {
 	fmt.Println(action)
+	fmt.Println(string(payload))
 	result, gasUsed, logs := ct.Call(stateEngine.TxVscCallContract{
 		Caller: authUser,
 
@@ -72,6 +64,7 @@ func CallContract(t *testing.T, ct *test_utils.ContractTest, action string, payl
 	PrintLogs(logs)
 	PrintErrorIfFailed(result)
 	fmt.Printf("return msg: %s\n", result.Ret)
+	fmt.Printf("RC used: %d\n", result.RcUsed)
 	fmt.Printf("gas used: %d\n", gasUsed)
 	fmt.Printf("gas max : %d\n", maxGas)
 
