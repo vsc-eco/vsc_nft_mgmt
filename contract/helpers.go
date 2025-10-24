@@ -5,7 +5,10 @@ import (
 	"vsc_nft_mgmt/sdk"
 )
 
-//
+// ===============
+// VARIOUS HELPERS
+// ===============
+
 // =======================================
 // Binary Key Prefixes (Single Byte Tags)
 // =======================================
@@ -25,9 +28,9 @@ const (
 )
 
 //
-// =======================================
+// ==============================
 // Inline Packing (Little Endian)
-// =======================================
+// ==============================
 //
 // We use direct array writes instead of append() to *completely avoid heap allocation*.
 // This pattern is used instead of make()+append for maximum gas efficiency.
@@ -54,13 +57,12 @@ func packU32LEInline(x uint32, dst []byte) {
 }
 
 //
-// =======================================
+// ==============================
 // Key Builders (Zero Heap Alloc)
-// =======================================
+// ==============================
 //
 // Using fixed-size byte arrays ensures the Go compiler places them on the stack,
 // fully avoiding GC and allocations.
-//
 
 // nftCoreKey builds the storage key for NFT core metadata.
 func nftCoreKey(nftID uint64) string {
@@ -103,6 +105,7 @@ func editionOverrideKey(nftID uint64, editionIndex uint32) string {
 	return string(buf[:])
 }
 
+// TODO: continue here
 // ownedIndexKey tracks editions owned by a specific address.
 // Uses heap for the owner suffix since length is variable.
 func ownedIndexKey(nftID uint64, owner string) string {
@@ -114,9 +117,9 @@ func ownedIndexKey(nftID uint64, owner string) string {
 }
 
 //
-// =======================================
+// ===============
 // Global Counters
-// =======================================
+// ===============
 //
 // These store the latest assigned ID for NFTs and Collections.
 //
@@ -141,9 +144,9 @@ func setCount(key string, n uint64) {
 }
 
 //
-// =======================================
+// ======================================
 // Fast Numeric Parsing (Zero Allocation)
-// =======================================
+// ======================================
 //
 // parseUint64Field parses substring [a:b] into uint64, aborting on first error.
 //
@@ -168,9 +171,9 @@ func parseUint32Field(s string, a, b int) uint32 {
 }
 
 //
-// =======================================
+// ===============================
 // Delimiter-Based Field Splitting
-// =======================================
+// ===============================
 //
 // These functions are hand-optimized for hot path ABI parsing.
 //
@@ -190,9 +193,9 @@ func split2(s string) int {
 }
 
 //
-// =======================================
+// ================
 // String Utilities
-// =======================================
+// ================
 
 // indexByte returns the index of c in s or -1 if missing.
 func indexByte(s string, c byte) int {
@@ -205,10 +208,10 @@ func indexByte(s string, c byte) int {
 }
 
 // splitOwnerCollection expects "<owner>_<collection>" strictly.
-func splitOwnerCollection(ownerCollection, spot string) (string, string) {
+func splitOwnerCollection(ownerCollection string) (string, string) {
 	idx := indexByte(ownerCollection, '_')
 	if idx <= 0 || idx >= len(ownerCollection)-1 {
-		sdk.Abort("[" + spot + "] invalid owner_collection")
+		sdk.Abort("invalid owner_collection")
 	}
 	return ownerCollection[:idx], ownerCollection[idx+1:]
 }
@@ -226,9 +229,9 @@ func mustParseUint64(s string) uint64 {
 }
 
 //
-// =======================================
+// ============================
 // Fixed-Size Delimited Parsing
-// =======================================
+// ============================
 
 // splitFixedPipe splits s into exactly n '|' delimited segments.
 func splitFixedPipe(s string, n int) []string {
@@ -278,4 +281,45 @@ func packU64LE(x uint64, b []byte) []byte {
 // packU32LE appends uint32 x to byte slice b in little-endian format.
 func packU32LE(x uint32, b []byte) []byte {
 	return append(b, byte(x), byte(x>>8), byte(x>>16), byte(x>>24))
+}
+
+// csv lookup and remover for market contract managment
+// containsInCSV checks if target is in csv string without allocations
+func containsInCSV(csv string, target string) bool {
+	start := 0
+	for i := 0; i <= len(csv); i++ {
+		if i == len(csv) || csv[i] == ',' {
+			if csv[start:i] == target {
+				return true
+			}
+			start = i + 1
+		}
+	}
+	return false
+}
+
+// removeFromCSV removes target from csv (returns new csv without trailing comma)
+func removeFromCSV(csv string, target string) string {
+	start := 0
+	found := false
+	b := make([]byte, 0, len(csv))
+
+	for i := 0; i <= len(csv); i++ {
+		if i == len(csv) || csv[i] == ',' {
+			part := csv[start:i]
+			if part == target {
+				found = true
+			} else {
+				if len(b) > 0 {
+					b = append(b, ',')
+				}
+				b = append(b, part...)
+			}
+			start = i + 1
+		}
+	}
+	if !found {
+		sdk.Abort("market not found")
+	}
+	return string(b)
 }

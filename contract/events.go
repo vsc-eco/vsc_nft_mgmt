@@ -6,13 +6,13 @@ import (
 )
 
 //
-// ======================================
+// ==========================================
 // Centralized Event Emission (Gas-Optimized)
-// ======================================
+// ==========================================
 //
 // We use manual JSON construction via byte buffers to minimize allocations,
 // avoid reflection, and guarantee deterministic output. Events are logged via
-// sdk.Log and are intended for indexing and reactive off-chain behavior.
+// sdk.Log and are intended for indexing off-chain behavior.
 //
 
 // emitEventJSON emits a generic JSON-formatted event.
@@ -44,9 +44,9 @@ func emitEventJSON(eventType string, attributesJSON string) {
 	sdk.Log(string(b))
 }
 
-// =======================================
+// ==============
 // NFT Mint Event
-// =======================================
+// ==============
 //
 // EmitMintEvent formats and emits:
 //
@@ -77,9 +77,9 @@ func EmitMintEvent(id uint64, creator string, ownerCol string, editions uint32) 
 	emitEventJSON("mint", string(attrs))
 }
 
-// =======================================
+// ==================
 // NFT Transfer Event
-// =======================================
+// ==================
 //
 // emitTransfer logs ownership change. Example:
 //
@@ -111,9 +111,9 @@ func emitTransfer(id uint64, ed *uint32, from string, to string) {
 	emitEventJSON("transfer", string(attrs))
 }
 
-// =======================================
+// ==============
 // NFT Burn Event
-// =======================================
+// ==============
 //
 // emitBurn logs a burn event for NFT or specific edition. Example:
 //
@@ -142,9 +142,9 @@ func emitBurn(id uint64, ed *uint32, owner string, _ string) {
 	emitEventJSON("burn", string(attrs))
 }
 
-// =======================================
+// ========================
 // Collection Created Event
-// =======================================
+// ========================
 //
 // EmitCollectionCreatedEvent emits:
 //

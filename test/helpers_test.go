@@ -39,7 +39,18 @@ func CleanBadgerDB() {
 }
 
 // CallContract executes a contract action and asserts basic success
-func CallContract(t *testing.T, ct *test_utils.ContractTest, action string, payload json.RawMessage, intents []contracts.Intent, authUser string, expectedResult bool, maxGas uint) (stateEngine.TxResult, uint, map[string][]string) {
+func CallContract(
+	t *testing.T,
+	ct *test_utils.ContractTest,
+	action string,
+	payload json.RawMessage,
+	intents []contracts.Intent,
+	authUser string,
+	expectedResult bool,
+	maxGas uint,
+	expectedOutput string,
+
+) (stateEngine.TxResult, uint, map[string][]string) {
 	fmt.Println(action)
 	fmt.Println(string(payload))
 	result, gasUsed, logs := ct.Call(stateEngine.TxVscCallContract{
@@ -74,6 +85,9 @@ func CallContract(t *testing.T, ct *test_utils.ContractTest, action string, payl
 		assert.True(t, result.Success, "Contract action failed with "+result.Ret)
 	} else {
 		assert.False(t, result.Success, "Contract action did not fail (as expected)")
+	}
+	if expectedOutput != "" {
+		assert.Equal(t, expectedOutput, result.Ret)
 	}
 	return result, gasUsed, logs
 }
@@ -130,7 +144,11 @@ func RunContractTests(t *testing.T, ct *test_utils.ContractTest, tests []Contrac
 	for _, tt := range tests {
 		tt := tt // capture range variable
 		t.Run(tt.Name, func(t *testing.T) {
-			CallContract(t, ct, tt.Action, PayloadToJSON(tt.Payload), tt.Intents, tt.AuthUser, tt.ExpectSuccess, uint(100_000_000))
+			CallContract(t, ct, tt.Action, PayloadToJSON(tt.Payload), tt.Intents, tt.AuthUser, tt.ExpectSuccess, uint(100_000_000), "")
 		})
 	}
+}
+
+func toStringPtr(s string) *string {
+	return &s
 }

@@ -1,325 +1,752 @@
 # VSC NFT Management Smart Contract
 
-This repository contains a **smart contract written in Go** for the
-[VSC-Eco](https://github.com/vsc-eco/) ecosystem.
-The contract is designed to integrate seamlessly with the vsc-ecosystem,
-enabling various nft related functionalities.
+This repository contains a **high-performance NFT management smart contract** written in **TinyGo**, optimized for the **VSC blockchain**.
+
+It enables efficient minting, transfer, and burning of NFTs-supporting both **unique NFTs** and **multi-edition NFTs**, with **gas-optimized storage and event indexing** and organizing owned NFTs in different user defined **collections**.
 
 
-## 📖 Overview
 
--   **Language:** Go (Golang) 1.23.2+
--   **Purpose:** Provides basic functions to create collections, minting, transferring and burning nfts
+## 🚀 Key Features
 
-
-## 📖 Schema
-
-Each Adress can have multiple collections. In each collection can be included multiple NFTs.
-There are editioned NFTs that are a sets of similar nfts and each edition is not stored as separate nft object.
-Every NFT can be transferred and burned no matter if they are unique or editions.
-
-- Collection (Id 123)
-    - unique NFT (Id 42)
-    - Editioned NFT (Id 43)
-        - Edition 0 (Id 43:0)
-        - Edition 1 (Id 43:1)
-        - Edition 2 (Id 43:2)
-        - Edition 3 (Id 43:3)
-        - ...
-    - unique NFT (Id 101)
-    - ...
-- Collection (Id 124)
-    - ...
-    - 
+| Feature | Description |
+| - |- |
+| **Collections**        | Each user can create multiple collections, uniquely indexed by `<owner>_<collectionIndex>` |
+| **NFT Minting**        | Supports both unique NFTs (single-edition) and multi-edition NFTs |
+| **Edition Logic**      | Editions do not store full NFT copies - only overrides when changed |
+| **Transfers**          | Owner-to-owner transfers and intra-owner collection transfers |
+| **Burning**            | burning of unique NFTs and edition NFTs without touching the NFT objects themselves |
+| **Market Integration** | Multiple external marketplace contract can be authorized to execute transfers. There are various exported getter functions defined to support an easy integration. |
+| **Low Gas Design**     | Fully manual state encoding, no JSON or reflection overhead. Simple, fast and gas-effective. |
 
 
-## 📂 Project Structure
 
-    ./vsc_nft_mgmt
-    ├── artifacts/  //Contains 
-    ├── contract/
-    │   └── admin.go // administrative functions
-    │   └── collections.go // functions for creating and getting collection data
-    │   └── events.go // event emitting functions for off-chain indexers
-    │   └── helpers.go // various utility functions
-    │   └── main.go // placeholder
-    │   └── nfts.go // functions related to nfts like minting, transferring and getting nft data
-    ├── runtime/
-    │   └── gc_leaking_exported.go
-    ├── sdk/ //SDK implementation. Do NOT modify
-    │   └── address.go
-    │   └── asset.go
-    │   └── env.go        
-    │   └── sdk.go    
-    ├── test/
-    │   └── basic_test.go // various tests
-    │   └── helpers_test.go // helpers for the tests
-    ├── go.mod
-    ├── go.sum
-    ├── readme.md
+## 🧠 Data Model Overview
 
-
-## ⚙️ Requirements
-
--   [Go](https://golang.org/dl/) **1.23.2+**
--   [TinyGo](https://tinygo.org/getting-started/install/)
--   [Wasm Edge](https://wasmedge.org/docs/start/install/) **v0.13.4**
--   [Wasm Tools](https://github.com/bytecodealliance/wasm-tools)
-
-## 🚀 Build & Deploy
-
-For instructions related to building and deploying see the [official docs - TODO add link](link).
-
-
-## ✅ Testing
-
-There are tests defined under `tests/basic_test.go`for all the important exported function implementations.
-
-You can build a testing build with the following command contrary to the official documentation:
-`tinygo build -gc=custom -scheduler=none -panic=trap -no-debug -target=wasm-unknown -tags=test -o test/artifacts/main.wasm ./contract`
-
-The tests are designed to run sequencially because the mocking database layer is a single-use-file only.
-For running the tests you simply run `go test -p 1 ./test -v` from within the root. 
-
-You should see a PASS at the end. If not there is at least one tests that failed:
 ```
-...
-gas used: 8153175
-gas max : 10000000
---- PASS: TestExtendEditionNFTs (0.57s)
-PASS
-ok      vsc_nft_mgmt/test       1.235s
+Account: hive:alice
+ └── Collection 0  ("hive:alice_0")
+ │     ├── NFT 1001 (unique)
+ │     ├── NFT 1002 (editions=3)
+ │     │      ├── Edition 0 → owner: hive:alice_0
+ │     │      ├── Edition 1 → owner: hive:bob_1  (override)
+ │     │      └── Edition 2 → burned             (override)
+ │     └── NFT 1003 (unique)
+ └── Collection 1  ("hive:alice_1")
+       └── NFT 1004 ...
+```
+
+### 🔑 Identifier Formats
+
+| Type | Format | Example | Notes |
+| - | - | - | - |
+| Collection | `"owner_colIndex"` | `"hive:alice_0"` | Internal ID is numeric, but key is stored using owner+index |
+| NFT  | `"nftID"` | `"1002"` | Always numeric string |
+| Edition | `"nftID\|edition"` | `"1002\|1"` | Default edition is `0` if omitted (for single-edition NFTs) |
+
+
+
+## 🧩 Pipeline Payload Format
+
+All exported functions use **string payloads**, delimited by the `|` character.
+This format avoids JSON overhead and minimizes gas.
+
+✅ **Example: Mint Payload**
+
+```
+"owner_collection|name|description|singleTransferFlag|editions|metadata"
+```
+
+✅ **Example: Transfer Payload**
+
+```
+"nftID|editionIndex|targetOwner_collection"
+```
+
+✅ **Example: Burn Payload**
+
+```
+"nftID"            (burn full base NFT if single-edition)
+"nftID|edition"   (burn a specific edition)
 ```
 
 
-## 📖 Exported Functions
 
-Below you can find all exported and usable functions for this smart contract including example payloads.
-**Warning:** These payloads contain comments which is invalid for json. Make sure tho remove the comments if you copy&paste payloads to test the contract.
+## ⚙️ Contract Architecture
 
-You can use the [Hive Keychain SDK Playground](https://play.hive-keychain.com/#/request/custom) for testing these L1 transactions.
-Username: `your Hive username`
-Id: `vsc.call`
-Method: `Active`
-Json: `below payloads`
-
-### Mutations
-
-#### Create Collection
-action: `col_create`
-Creates a collection for the sending address. 
-payload: 
-```json5
-{
-    "name": "Trasure Chest", // mandatory: name of the collection (max 100 characters)
-    "description": "All my NFTs" // optional: description of the collection (max 1000 characters)
-}
+```
+contract/
+├── admin.go          # marketplace authorization
+├── collections.go    # create collections
+├── nfts.go           # mint/transfer/burn NFTs
+├── events.go         # event emission
+├── getters.go         # all getters for NFT and collection specifics
+├── helpers.go        # parsing, binary encoding, state key builders
+├── main.go           # placeholder
 ```
 
 
-#### Mint NFT
 
-action: `nft_mint`
-Creates a **unique** or **editioned** NFT.
+## 🔥 Behavior Summary
 
-**unique:**
-```json5
-{
-  "c": "123", // mandatory: target collection ID
-  "name": "Golden Sword", // mandatory: name of the NFT
-  "desc": "A legendary one-of-a-kind sword", // optional: description
-  "bound": false, // optional: true = can be transferred only once from creator (/)defaults to false)
-  "meta": { // optional: metadata key-value pairs
-    "rarity": "legendary",
-    "attack": "150",
-    "durability": "unbreakable"
-  }
-}
+| Action   | Multi-edition NFT | Unique NFT |
+| - | - | - |
+| Transfer | Updates edition override only | Updates base owner entry |
+| Burn | Sets burned flag in edition override | Creates owner override and sets burned flag|
+| Get | Resolves overrides and returns final real-time ownership state | Direct |
+
+
+
+
+# ⚙️ Build & Deployment Guide
+
+Follow the current official guidelines for smart contract deployment on VSC.
+
+
+
+## 🧪 Testing Locally
+
+### 🔧 Build WASM for Tests
+
+```bash
+tinygo build \
+  -gc=custom \
+  -scheduler=none \
+  -panic=trap \
+  -no-debug \
+  -target=wasm-unknown \
+  -tags=test \
+  -o test/artifacts/main.wasm \
+  ./contract
 ```
 
-**editioned with 10 editions:**
-```json5
-{
-  "c": "123", // mandatory: target collection ID
-  "name": "Golden Sword", // mandatory: name of the NFT
-  "desc": "A legendary one-of-a-kind sword", // optional: description
-  "bound": false, // optional: true = can be transferred only once from creator (/)defaults to false)
-  "meta": { // optional: metadata key-value pairs
-    "rarity": "legendary",
-    "attack": "150",
-    "durability": "unbreakable"
-  },
-  "et":10
-}
+### ▶ Run Tests
+
+```bash
+go test ./test -v
 ```
 
-#### Transfer NFT
-action: `nft_transfer`
-Tranfers an **NFT** (edition or unique) to a new collection or a new owner. Only the owner or a administrative defined market contract can move an nft to a new owner. Only owners can move the an NFT to another owned collection.
-```json5
-{
-  "id": "42", // mandatory: NFT ID (string-form ID used in state keys)
-  "col": "123", // mandatory: destination collection ID (can be same as current)
-  "owner": "hive:someone" // mandatory: destination owner address
-}
+
+### 🧪 Test Example Execution (Expected Logs)
+
+```
+gas used: 2159
+gas max : 100000000
+PASS: TestMintUniqueNFT
+PASS: TestMintEditionNFT
+PASS: TestTransferEditionBetweenUsers
 ```
 
-### Queries
-The following exported functions return json and are meant to be used by other contracts like the market contract for example. Reading data from a contract state outside of the smart contract environment is more cost-effective and faster by utilizing the vsc API and a future indexers.
-For that reason there are only single-object getters defined.
+
+# 📖 **Exported Functions — Public ABI**
+
+These functions are callable via:
+
+* **Hive Custom JSON** with id: `vsc.call`
+* Smart contract–to–contract calls within the VSC ecosystem
+
+All payloads are **plain strings**. This improves gas efficiency and parsing speed over JSON.
 
 
-#### Collections
-##### Get One Collection
-Returns a collection.
-| action | payload  | payload description |
-| ------ | -------- | ------------------- |
-| col_get     | 123     | mandatory: Collection ID     |
+
+## 🔧 **Mutations (State-Changing)**
 
 
-#### NFTs
-##### Get One NFT
-Returns an NFT
-| action | payload  | payload description |
-| ------ | -------- | ------------------- |
-| nft_get | 42 | mandatory: NFT ID |
+### 🎯 Create Collection
+
+**Action:** `col_create`
+
+**Payload Format:**
+
+```
+<name>|<desc>|<meta>
+```
+
+| Field | Description | Required | Notes |
+| -- | -  | -- | - |
+| name  | Collection name          | ✅        | Max 48 chars       |
+| desc  | Description              | ✅        | Max 128 chars      |
+| meta  | Metadata (opaque string) | ✅        | Can be any string  |
+
+**Example:**
+
+```
+My Art Collection|Best of my artworks|ipfs://Qm123abc
+```
 
 
-## On-Chain Events
 
-The contract outputs standardized event logs for future indexers. This way an UI can quickly show nfts within a collection, available editions for an nft, all nfts for a given user, etc.
+### 🎨 Mint NFT
 
-Each log is represented by an `Event` object with two main fields:
+**Action:** `nft_mint`
 
-- **`type`** – the kind of event (e.g., `transfer`, `mint`, `burn`, `collection`)  
-- **`attributes`** – key-value pairs containing contextual event details  
+**Payload Format:**
 
-All events are logged via the internal `emitEvent` helper, which serializes them to JSON and passes them to `sdk.Log`.
+```
+<owner>_<collection>|<name>|<desc>|<singleTransfer>|<editions>|<meta>
+```
 
-As we support unique nfts and editioned nfts the nft identifier could be in 2 different formats:
-| NFT Type | NFT Identifier | Description                                                 |
-|---------------|-----------|-------------------------------------------------------------|
-| Unique NFT    | "123"     | Actual NFT Id                                               |
-| Editioned NFT | "124:10"  | Composite Id containing NFT Id (124) and edition index (10) |
+| Field            | Required | Description                                     |
+| - | -- | -- |
+| owner_collection | ✅        | Format: `hive:account_collectionIndex`          |
+| name             | ✅        | NFT name (max 48 chars)                                      |
+| desc             | ✅        | NFT description (max 128 chars)                                |
+| singleTransfer   | ✅        | `"true"` or `"false"` — soulbound-like behavior |
+| editions         | ✅        | Empty = `1`, or set number e.g. `"10"`          |
+| meta             | ✅        | Metadata can be any string                               |
 
-Addressing the identifier as "124" if the nft itself is edition-based the contract will automatically assume edition #0 is meant.
+**Unique NFT Example:**
+
+```
+hive:alice_0|Golden Sword|Legendary blade|false||{"rarity":"legendary"}
+```
+
+**Editioned NFT Example:**
+
+```
+hive:alice_0|Trading Card|Limited series|false|10|ipfs://QmMetaHash
+```
 
 
-### Event Summary Table
 
-| Event Type | Key Attributes | Optional Attributes | Description |
-|------------|----------------|-------------------|-------------|
-| `transfer` | `id`, `from`, `to`, `fromCollection`, `toCollection` | – | Emitted when an NFT is transferred between addresses |
-| `mint`     | `id`, `by`, `to`, `toCollection` | `editionsTotal` | Emitted when a new NFT is created |
-| `burn`     | `id`, `by`, `collection` | – | Emitted when an NFT is destroyed |
-| `collection` | `id`, `by` | – | Emitted when a new NFT collection is created |
+### 🔄 **Transfer NFT or Edition**
+
+**Action:** `nft_transfer`
+
+**Payload Format:**
+
+```
+<nftID>|<editionIndex>|<owner>_<collection>
+```
+
+| Field            | Required | Description                    |
+| - | -- | -  |
+| nftID            | ✅        | The core NFT ID                |
+| editionIndex     | ✅        | Empty for base (0), or integer |
+| owner_collection | ✅        | Target owner & collection      |
+
+**Examples:**
+
+* Transfer base NFT:
+
+```
+42||hive:bob_1
+```
+
+* Transfer edition #3:
+
+```
+43|3|hive:bob_2
+```
 
 
-### Event Types
 
-#### 🔄 Transfer Event
-Emitted when an NFT is transferred between addresses.
+### 🔥 **Burn NFT / Edition**
 
-**Attributes**
-- `id` – NFT identifier
-- `from` – sender address  
-- `to` – receiver address  
-- `fromCollection` – source collection ID  
-- `toCollection` – destination collection ID  
+**Action:** `nft_burn`
 
-**Example**
+**Payload Format:**
+
+```
+<nftID>
+<nftID>|<editionIndex>
+```
+
+**Example (burn edition 2):**
+
+```
+50|2
+```
+
+
+
+### 🏛 Add Market Contract (Admin Only)
+
+**Action:** `add_market`
+
+**Payload:**
+
+```
+hive:marketaddr
+```
+
+
+
+### 🏛 Remove Market Contract (Admin Only)
+
+**Action:** `remove_market`
+
+**Payload:**
+
+```
+hive:marketaddr
+```
+
+
+
+## 🔍 **Queries (Read-Only)**
+
+These functions are intended to be used exclusively by other contracts. 
+
+### 📦 **Get Collection**
+
+**Action:** `col_get`
+
+**Payload:**
+
+```
+<owner>_<collection>
+```
+
+**Returns:**
+
+```
+<owner>|<col>|<tx>|<name>|<desc>|<meta>
+```
+
+
+
+### 📊 **Get Collection Count for Account**
+
+**Action:** `col_count`
+
+**Payload:**
+
+```
+hive:alice
+```
+
+**Returns:** `"3"`
+
+
+
+### ✅ **Check Collection Exists**
+
+**Action:** `col_exists`
+
+**Payload:**
+
+```
+hive:alice_1
+```
+
+**Returns:** `"true"` or `"false"`
+
+
+
+### 🧬 **Get NFT**
+
+**Action:** `nft_get`
+
+**Payload:**
+
+```
+<id>
+<id>|<edition>
+```
+
+**Returns:**
+
+```
+<nftID>|<editionIndex or empty>|<creator>|<owner_col>|<tx>|<name>|<desc>|<meta>|<edTotal>
+```
+
+
+
+### 🧾 **Check Ownership**
+
+**Action:** `nft_isOwner`
+
+Payload:
+
+```
+<nftID>
+<nftID>|<editionIndex>
+```
+
+Returns: `"true"` or `"false"`
+
+
+
+### 🧮 **Get Supply**
+
+**Action:** `nft_supply`
+
+Payload:
+
+```
+<nftID>
+```
+
+Returns:
+
+```
+10
+```
+
+
+
+### 🔥 **Check Burn State**
+
+**Action:** `nft_isBurned`
+
+Payload:
+
+```
+<nftID>|<editionIndex>
+```
+
+Returns `"true"` or `"false"`
+
+
+
+### 🧷 **Check Single-Transfer (Soulbound)**
+
+**Action:** `nft_isSingleTransfer`
+
+Payload:
+
+```
+<nftID>
+```
+
+Returns `"true"` / `"false"`
+
+
+
+### 📌 **Get NFT Owner (with collection context)**
+
+**Action:** `nft_ownerColOf`
+
+Payload:
+
+```
+<nftID>
+<nftID>|<editionIndex>
+```
+
+Returns:
+
+```
+hive:alice_0
+```
+
+
+
+### 🧬 **Get NFT Creator**
+
+**Action:** `nft_creator`
+
+Payload:
+
+```
+42
+```
+
+Returns:
+
+```
+hive:alice
+```
+
+
+
+### 🧬 **Owned Editions**
+
+**Action:** `nft_hasNFTEdition`
+
+Payload:
+
+```
+<nftID>,<ownerAddress>
+```
+
+Returns:
+
+```
+0,1,3
+```
+
+
+
+
+# 🔔 **On-Chain Events**
+
+The contract uses **manual, gas-optimized JSON serialization** to log events using `sdk.Log`. These events are designed to be **consumed by off-chain indexers** to store data in relational databases and expose it by api endpoints.
+
+Each event follows this format:
+
 ```json
 {
-  "type": "transfer",
-  "attributes": {
-    "id": "123",
-    "from": "hive:someone",
-    "to": "hive:someoneelse",
-    "fromCollection": "1",
-    "toCollection": "2"
-  }
-}
-````
-
-
-#### 🪙 Mint Event
-
-Emitted when a new NFT is created.
-
-**Attributes**
-
-* `id` – minted NFT identifier
-* `by` – address that minted the NFT
-* `to` – receiver address (usually the same as minting address)
-* `toCollection` – collection ID (needs to be owned by the receiving address)
-* `editionsTotal` *(optional)* – number of editions created
-
-**Example**
-
-```json
-{
-  "type": "mint",
-  "attributes": {
-    "id": "456",
-    "by": "hive:someone",
-    "to": "hive:someone",
-    "toCollection": "3",
-    "editionsTotal": "10"
-  }
+  "type": "<event_name>",
+  "attributes": { ... },
+  "tx": "<transaction_id>"
 }
 ```
 
+* **`type`** – identifies the category
+* **`attributes`** – compact key-value data (custom per event)
+* **`tx`** – blockchain transaction ID from `tx.id`
 
-#### 🔥 Burn Event
-
-Emitted when an NFT is destroyed.
-
-**Attributes**
-
-* `id` – burned NFT identifier
-* `by` – owner address that burned it
-* `collection` – collection ID
-
-**Example**
-
-```json
-{
-  "type": "burn",
-  "attributes": {
-    "id": "789",
-    "by": "hive:someone",
-    "collection": "4"
-  }
-}
-```
+> ✅ Events use **short attribute keys** (“id”, “cr”, “oc”, “ed”) to reduce gas and storage.
 
 
-#### 📦 Collection Created Event
 
-Emitted when a new NFT collection is initialized.
+## 📦 **Event Summary Table**
 
-**Attributes**
+| Event Type   | Triggered By   | Attributes (Compact JSON)                                                 |
+|  | -- | - |
+| `collection` | `col_create`   | `{ "id":<collectionID>, "cr":"<creator>" }`                               |
+| `mint`       | `nft_mint`     | `{ "id":<nftID>, "cr":"<creator>", "oc":"<owner_col>", "ed":<editions> }` |
+| `transfer`   | `nft_transfer` | `{ "id":<nftID>, "ed":<edition?>, "fr":"<from>", "to":"<to>" }`           |
+| `burn`       | `nft_burn`     | `{ "id":<nftID>, "ed":<edition?>, "ow":"<owner>" }`                       |
 
-* `id` – collection ID
-* `by` – creator address
+> ⚠ `ed` attribute is only emitted if NFT has multiple editions.
 
-**Example**
+
+
+## 🧱 Event Field Glossary
+
+| Key  | Meaning                                                  |
+| - | -- |
+| `id` | The numeric NFT or collection ID                         |
+| `cr` | Creator address (minter or collection creator)           |
+| `oc` | `"owner_collection"` formatted as `<owner>_<collection>` |
+| `ed` | Edition index (optional for editioned NFTs)              |
+| `fr` | From address (current owner)                             |
+| `to` | Target owner                                             |
+| `ow` | Owner performing the burn                                |
+| `tx` | Immutable transaction ID                                 |
+
+
+
+# 📘 Detailed Event Types
+
+
+### 📦 **Collection Created Event**
+
+Occurs when a user creates a new collection.
+
+**Example Log:**
 
 ```json
 {
   "type": "collection",
   "attributes": {
-    "id": "5",
-    "by": "hive:someone"
-  }
+    "id": 0,
+    "cr": "hive:alice"
+  },
+  "tx": "TX123ABC"
 }
 ```
 
 
 
+### 🪙 **Mint Event**
+
+Triggered when a new NFT is minted into a collection.
+
+**Example (unique NFT):**
+
+```json
+{
+  "type": "mint",
+  "attributes": {
+    "id": 1001,
+    "cr": "hive:alice",
+    "oc": "hive:alice_0",
+    "ed": 1
+  },
+  "tx": "TX456ABC"
+}
+```
+
+**Example (editioned NFT with 10 copies):**
+
+```json
+{
+  "type": "mint",
+  "attributes": {
+    "id": 1002,
+    "cr": "hive:alice",
+    "oc": "hive:alice_0",
+    "ed": 10
+  },
+  "tx": "TX457ABC"
+}
+```
+
+
+
+### 🔄 **Transfer Event**
+
+Emitted for:
+
+* Ownership transfers
+* Collection changes for the same owner
+* Edition-level transfers (only the edition being moved is affected)
+
+**Example (single-edition transfer):**
+
+```json
+{
+  "type": "transfer",
+  "attributes": {
+    "id": 1001,
+    "fr": "hive:alice",
+    "to": "hive:bob"
+  },
+  "tx": "TX789CDE"
+}
+```
+
+**Example (edition 2 transfer only):**
+
+```json
+{
+  "type": "transfer",
+  "attributes": {
+    "id": 1002,
+    "ed": 2,
+    "fr": "hive:alice",
+    "to": "hive:bob"
+  },
+  "tx": "TX790CDE"
+}
+```
+
+
+
+### 🔥 **Burn Event**
+
+Marks the NFT or specific edition as permanently burned (cannot be reactivated).
+
+**Example (burn full base NFT):**
+
+```json
+{
+  "type": "burn",
+  "attributes": {
+    "id": 1001,
+    "ow": "hive:alice"
+  },
+  "tx": "TX900DEF"
+}
+```
+
+**Example (burn edition #1 only):**
+
+```json
+{
+  "type": "burn",
+  "attributes": {
+    "id": 1002,
+    "ed": 1,
+    "ow": "hive:alice"
+  },
+  "tx": "TX901DEF"
+}
+```
+
+
+
+## 📡 Event Consumption Guidelines for External Indexers
+
+| Use Case                     | Contract to Listen For | Action                                   |
+| - | - | - |
+| Show real-time NFT ownership | `transfer` events      | Apply edition-level ownership overrides  |
+| Display available supply     | Track `burn` events    | Mark editions as burned                  |
+| List user collections        | `collection` events    | Index collection IDs via `(id, creator)` |
+| Enumerate NFTs in collection | `mint` events          | Use `"oc"` + `"id"` attributes           |
+
+
+
+### 🔌 Event Best Practices
+
+* Indexers should replay events in order of **`timestamp` of the related ContractOutput**.
+* Indexers should subscribe to the event stream for upcoming events.
+* Always resolve final state using events + edition overrides.
+
+
+
+
+# 🔎 How Data Is Stored (for Off-Chain Reads)
+
+### ✅ Collections (ASCII keys; easy to query directly)
+
+* **Key:** `c_<owner>_<collectionIndex>`
+  Example: `c_hive:alice_0`
+* **Value:** `"tx|name|desc|meta"`
+
+> ➕ Reason: We deliberately store collection *core* under the **ASCII index key** so that off-chain tools can fetch a collection **with one key lookup**.
+
+**Parsing:** Use a simple split on `|`:
+
+* `tx` – transaction id at creation
+* `name`, `desc`, `meta` – strings as provided on creation
+
+
+
+### 🧱 NFTs (binary-prefixed keys; **do not** fetch raw keys directly)
+
+NFTs use compact binary-prefixed keys internally (e.g., `\x01<idLE>`). These are **not** friendly to general GraphQL APIs.
+👉 Off-chain consumers should use **exported getters** (e.g. `nft_get`, `nft_ownerColOf`) or better and recommended: **index events**.
+
+**Recommended approach (off-chain):**
+
+* Subscribe to events (`mint`, `transfer`, `burn`) and **maintain your own tables**:
+
+  * `nfts(id, creator, oc, name, desc, meta, edTotal, txCreate)`
+  * `nft_editions(nft_id, ed_index, owner_collection, burned)`
+  * `collections(owner, index, name, desc, meta, txCreate)`
+* Reconstruct current state by replaying events **in `timestamp` order**.
+
+
+# 🔐 Marketplace & UI Patterns
+
+* **Show current owner of edition:** `nft_ownerColOf("<id>|<ed>")`
+* **Show supply:** `nft_supply("<id>")` (string integer)
+* **Show metadata:** `nft_meta("<id>")` (opaque)
+* **Check if NFT is soulbound:** `nft_isSingleTransfer("<id>")`
+* **Check if user owns edition(s):** `nft_hasNFTEdition("<id>,<owner>")`
+* **Verify ownership inline:** `nft_isOwner("<id>|<ed>")` returns `"true"`/`"false"`
+
+
+
+# 🧪 Payload Helper Cheatsheet (Delimiters)
+
+| Use Case | Payload | Example |
+| - | - | - |
+| Create collection` | `"<name>\|<desc>\|<meta>"`| `"MyNFTs\|Personal NFT vault\|ipfs://Qm123"` |
+| Mint NFT | `"<owner>_<col>\|<name>\|<desc>\|<single>\|<editions>\| <meta>"`| `"hive:alice_0\|Dragon Egg\|Hatchable eggs\|false\|10\|ipfs://QmBBB"` |
+| Transfer | `"<nftID>\|<edition>\|<owner>_<col>"` | `"43\|3\|hive:bob_1"` |
+| Burn | `"<nftID>"` or `"<nftID>\|<edition>"` | `"43\|0"` |
+| Get collection | `"<owner>_<col>"` | `"hive:alice_0"` |
+| Check collection exists | `"<owner>_<col>"` | `"hive:alice_0"`|
+| Count collections | `"<owner>"` | `"hive:alice"`|
+| Get NFT | `"<id>"` or `"<id>\|<ed>"` | `"43\|0"` | 
+| Is owner | `"<id>"` or `"<id>\|<ed>"` | `"43\|0"` |
+| Get ownerCol | `"<id>"` or `"<id>\|<ed>"` | `"43\|0"` |
+| Get creator | `"<id>"` | `"43"` |
+| Get meta | `"<id>"` | `"43"` |
+| Get supply | `"<id>"` | `"43"` |
+| Is burned | `"<id>"` or `"<id>\|<ed>"`  | `"43\|0"` |
+| Is single-transfer | `"<id>"`| `"43"` |
+
+
+
+# ⚠️ Gotchas & Best Practices
+
+* **Always** include edition index for **multi-edition** NFTs when checking ownership or burn state.
+* Collections are **directly readable** via ASCII key `c_<owner>_<idx>`.
+* For NFTs, prefer **getters** or **events**; do not rely on raw state binary keys.
+* Your dApp should treat **metadata** as opaque (URI or inline JSON).
+* Payloads are **strings**, not JSON—avoid spaces and use exact delimiters.
+
+
+--- 
 ## 📚 Documentation
 -   [Go-VSC-Node](https://github.com/vsc-eco/go-vsc-node)
 -   [Go-Contract-Template](https://github.com/vsc-eco/go-contract-template)
 
 ## 📜 License
-This project is licensed under the [MIT License](LICENSE).
+This project is licensed under the [MIT License](LICENSE).  
