@@ -18,20 +18,22 @@ func AddMarketContract(addr *string) *string {
 	if addr == nil || *addr == "" {
 		sdk.Abort("market address required")
 	}
-	caller := sdk.GetEnvKey("msg.sender")
-	if caller == nil || *caller != contractOwner {
+	sender := sdk.GetEnvKey("msg.sender")
+	if sender == nil || *sender != contractOwner {
 		sdk.Abort("only contract owner can set market")
 	}
 
-	existing := sdk.StateGetObject(marketKey)
+	existing := GetMarketContractsCSV(nil) // load current market list
 	if existing != nil && *existing != "" {
+		// if we already have at least one market contract
 		// prevent duplicate
 		if containsInCSV(*existing, *addr) {
 			return nil
 		}
-		newVal := *existing + "," + *addr
+		newVal := *existing + "|" + *addr // append new contract to list
 		sdk.StateSetObject(marketKey, newVal)
 	} else {
+		// if we do not have any market contract yet
 		sdk.StateSetObject(marketKey, *addr)
 	}
 	return nil
@@ -46,12 +48,12 @@ func RemoveMarketContract(addr *string) *string {
 	if addr == nil || *addr == "" {
 		sdk.Abort("market address required")
 	}
-	caller := sdk.GetEnvKey("msg.sender")
-	if caller == nil || *caller != contractOwner {
+	sender := sdk.GetEnvKey("msg.sender")
+	if sender == nil || *sender != contractOwner {
 		sdk.Abort("only contract owner can remove market")
 	}
 
-	existing := sdk.StateGetObject(marketKey)
+	existing := GetMarketContractsCSV(nil)
 	if existing == nil || *existing == "" {
 		sdk.Abort("no marketplaces found")
 	}
@@ -61,9 +63,9 @@ func RemoveMarketContract(addr *string) *string {
 	return nil
 }
 
-// GetMarketContractsCSV retrieves the currently configured market contracts as comma separated string.
+// GetMarketContractsCSV retrieves the currently configured market contracts
 //
-//go:wasmexport get_market
+//go:wasmexport get_markets
 func GetMarketContractsCSV(_ *string) *string {
 	return sdk.StateGetObject(marketKey)
 }

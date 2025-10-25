@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"strconv"
 	"vsc_nft_mgmt/sdk"
 )
@@ -315,7 +316,7 @@ func packU64LE(x uint64, b []byte) []byte {
 func containsInCSV(csv string, target string) bool {
 	start := 0
 	for i := 0; i <= len(csv); i++ {
-		if i == len(csv) || csv[i] == ',' {
+		if i == len(csv) || csv[i] == '|' {
 			if csv[start:i] == target {
 				return true
 			}
@@ -330,15 +331,16 @@ func removeFromCSV(csv string, target string) string {
 	start := 0
 	found := false
 	b := make([]byte, 0, len(csv))
+	sdk.Log(fmt.Sprintf("existing:%s//removing:%s", csv, target))
 
 	for i := 0; i <= len(csv); i++ {
-		if i == len(csv) || csv[i] == ',' {
+		if i == len(csv) || csv[i] == '|' {
 			part := csv[start:i]
 			if part == target {
 				found = true
 			} else {
 				if len(b) > 0 {
-					b = append(b, ',')
+					b = append(b, '|')
 				}
 				b = append(b, part...)
 			}

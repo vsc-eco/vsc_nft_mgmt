@@ -7,10 +7,14 @@ import (
 // // // admin tests
 func TestAdminMarket(t *testing.T) {
 	ct := SetupContractTest()
-	CallContract(t, ct, "add_market", []byte("hive:tibfox"), nil, "hive:tibfox", false, uint(10_000), "")
-	CallContract(t, ct, "add_market", []byte(""), nil, "hive:someone", false, uint(1_000), "")
-	CallContract(t, ct, "add_market", []byte("hive:tibfox"), nil, "hive:contractowner", true, uint(100_000_000), "")
-	CallContract(t, ct, "get_market", []byte(""), nil, "hive:contractowner", true, uint(100_000_000), "")
+	CallContract(t, ct, "add_market", []byte("vscxyz"), nil, "hive:nocontractowner", false, uint(1_000_000_000), "")
+	CallContract(t, ct, "add_market", []byte(""), nil, "hive:contractowner", false, uint(1_000), "")
+	CallContract(t, ct, "add_market", []byte("vscxyz"), nil, "hive:contractowner", true, uint(100_000_000), "")
+	CallContract(t, ct, "get_markets", []byte(""), nil, "hive:contractowner", true, uint(100_000_000), "vscxyz")
+	CallContract(t, ct, "add_market", []byte("vscabc"), nil, "hive:contractowner", true, uint(100_000_000), "")
+	CallContract(t, ct, "get_markets", []byte(""), nil, "hive:contractowner", true, uint(100_000_000), "vscxyz|vscabc")
+	CallContract(t, ct, "remove_market", []byte("vscxyz"), nil, "hive:contractowner", true, uint(100_000_000), "")
+	CallContract(t, ct, "get_markets", []byte(""), nil, "hive:contractowner", true, uint(100_000_000), "vscabc")
 
 }
 
@@ -18,7 +22,6 @@ func TestAdminMarket(t *testing.T) {
 
 func TestColCreateSuccess(t *testing.T) {
 	ct := SetupContractTest()
-	// just create a collection
 	CallContract(t, ct, "col_create", []byte("collectionA|my description|img=testurl"), nil, "hive:someone", true, uint(1_000_000_000), "")
 	CallContract(t, ct, "col_create", []byte("collectionB||"), nil, "hive:someone", true, uint(1_000_000_000), "")
 	CallContract(t, ct, "col_get", []byte("hive:someone_0"), nil, "hive:someone", true, uint(100_000_000), "")
@@ -183,13 +186,10 @@ func TestBurnSuccess(t *testing.T) {
 	CallContract(t, ct, "nft_isBurned", []byte("0"), nil, "hive:someone", true, uint(100_000_000), "false")
 	CallContract(t, ct, "nft_burn", []byte("0"), nil, "hive:someone", true, uint(100_000_000), "")
 	CallContract(t, ct, "nft_isBurned", []byte("0"), nil, "hive:someone", true, uint(100_000_000), "true")
-
 }
 
 func TestBurnEditionSuccess(t *testing.T) {
 	ct := SetupContractTest()
-	// set market
-	CallContract(t, ct, "add_market", PayloadToJSON("hive:marketaddress"), nil, "hive:contractowner", true, uint(1_000_000_000), "")
 	// create a collection
 	CallContract(t, ct, "col_create", []byte("collectionA|my description|img=testurl"), nil, "hive:someone", true, uint(1_000_000_000), "")
 	// mint 10 nft editions
@@ -241,7 +241,7 @@ func TestBurnFails(t *testing.T) {
 func TestTransfersSuccess(t *testing.T) {
 	ct := SetupContractTest()
 	// set market
-	CallContract(t, ct, "add_market", PayloadToJSON("hive:marketaddress"), nil, "hive:contractowner", true, uint(1_000_000_000), "")
+	CallContract(t, ct, "add_market", []byte("vscxyz"), nil, "hive:contractowner", true, uint(1_000_000_000), "")
 	// create a collection for sender
 	CallContract(t, ct, "col_create", []byte("collectionA|my description|img=testurl"), nil, "hive:someone", true, uint(1_000_000_000), "")
 
@@ -255,23 +255,22 @@ func TestTransfersSuccess(t *testing.T) {
 
 	// transfer nft by minter (should success)
 	CallContract(t, ct, "nft_transfer",
-		[]byte("0||hive:someoneelse_1"),
+		[]byte("0||hive:someoneelse_0"),
 		nil, "hive:someone", true, uint(1_000_000_000), "")
 
-	CallContract(t, ct, "nft_ownerColOf", []byte("0"), nil, "hive:someone", true, uint(100_000_000), "hive:someoneelse_1")
+	CallContract(t, ct, "nft_ownerColOf", []byte("0"), nil, "hive:someone", true, uint(100_000_000), "hive:someoneelse_0")
 
 	// transfer nft by minter (should success)
 	CallContract(t, ct, "nft_transfer",
 		[]byte("0||hive:someone_0"),
-		nil, "hive:marketaddress", true, uint(1_000_000_000), "")
+		nil, "vscxyz", true, uint(1_000_000_000), "")
 	CallContract(t, ct, "nft_isOwner", []byte("0"), nil, "hive:someone", true, uint(100_000_000), "true")
 }
 
 // test transfers with excepted fails
 func TestTransfersFails(t *testing.T) {
 	ct := SetupContractTest()
-	// set market
-	CallContract(t, ct, "add_market", PayloadToJSON("hive:marketaddress"), nil, "hive:contractowner", true, uint(1_000_000_000), "")
+
 	// create a collection for sender
 	CallContract(t, ct, "col_create", []byte("collectionA|my description|img=testurl"), nil, "hive:someone", true, uint(1_000_000_000), "")
 
@@ -285,7 +284,7 @@ func TestTransfersFails(t *testing.T) {
 
 	// transfer nft by other user than minter
 	CallContract(t, ct, "nft_transfer",
-		[]byte("0||hive:someoneelse_1"),
+		[]byte("0||hive:someoneelse_0"),
 		nil, "hive:someoneelse", false, uint(100_000_000), "")
 
 	// transfer non existing nft
@@ -314,7 +313,7 @@ func TestTransfersFails(t *testing.T) {
 func TestEditionTransfers(t *testing.T) {
 	ct := SetupContractTest()
 	// set market
-	CallContract(t, ct, "add_market", PayloadToJSON("hive:marketaddress"), nil, "hive:contractowner", true, uint(1_000_000_000), "")
+	CallContract(t, ct, "add_market", []byte("vscxyz"), nil, "hive:contractowner", true, uint(1_000_000_000), "")
 	// create a collection for sender
 	CallContract(t, ct, "col_create", []byte("collectionA|my description|img=testurl"), nil, "hive:someone", true, uint(1_000_000_000), "")
 
@@ -326,19 +325,21 @@ func TestEditionTransfers(t *testing.T) {
 		[]byte("hive:someone_0|name|description|false|999999|test=123,test2=abc"),
 		nil, "hive:someone", true, uint(1_000_000_000), "")
 
+	CallContract(t, ct, "nft_isOwner", []byte("0|23"), nil, "hive:someone", true, uint(100_000_000), "true")
+
 	CallContract(t, ct, "nft_supply", []byte("0"), nil, "hive:someone", true, uint(100_000_000), "999999")
 	CallContract(t, ct, "nft_meta", []byte("0"), nil, "hive:someone", true, uint(100_000_000), "test=123,test2=abc")
 
 	// transfer edition no 3 nft (should success)
 	CallContract(t, ct, "nft_transfer",
-		[]byte("0|3|hive:someoneelse_1"),
+		[]byte("0|3|hive:someoneelse_0"),
 		nil, "hive:someone", true, uint(1_000_000_000), "")
 
 	CallContract(t, ct, "nft_isOwner", []byte("0|3"), nil, "hive:someoneelse", true, uint(100_000_000), "true")
 
 	// transfer edition no 999999 nft (should success)
 	CallContract(t, ct, "nft_transfer",
-		[]byte("0|99999|hive:someoneelse_1"),
+		[]byte("0|99999|hive:someoneelse_0"),
 		nil, "hive:someone", true, uint(1_000_000_000), "")
 
 	// transfer back edition no 999999 nft (should success)
@@ -348,11 +349,38 @@ func TestEditionTransfers(t *testing.T) {
 	CallContract(t, ct, "nft_isOwner", []byte("0|99999"), nil, "hive:someone", true, uint(100_000_000), "true")
 	CallContract(t, ct, "nft_ownerColOf", []byte("0|99999"), nil, "hive:someone", true, uint(100_000_000), "hive:someone_0")
 
-	// // maliciou trying to transfer edition no 5000 not by owner (should fail)
+	// // // maliciou trying to transfer edition no 5000 not by owner (should fail)
 	CallContract(t, ct, "nft_transfer",
-		[]byte("0|5000|hive:someoneelse_1"),
-		nil, "hive:someoneelse", false, uint(1_000_000_000), "")
+		[]byte("0|5000|hive:someoneelse_0"),
+		nil, "hive:someoneelse", false, uint(1_000_000_000), "msg: only market or owner can transfer")
 
 	CallContract(t, ct, "nft_isOwner", []byte("0|5000"), nil, "hive:someone", true, uint(100_000_000), "true")
+
+}
+
+// edition transfers burn protection
+func TestEditionTransfersBurnProtection(t *testing.T) {
+	ct := SetupContractTest()
+	// set market
+	CallContract(t, ct, "col_create", []byte("collectionA|my description|img=testurl"), nil, "hive:someone", true, uint(1_000_000_000), "")
+
+	// create a collection for receiver
+	CallContract(t, ct, "col_create", []byte("collectionB|my description|img=testurl"), nil, "hive:someoneelse", true, uint(1_000_000_000), "")
+
+	// mint nft
+	CallContract(t, ct, "nft_mint",
+		[]byte("hive:someone_0|name|description|false|10|test=123,test2=abc"),
+		nil, "hive:someone", true, uint(1_000_000_000), "")
+
+	CallContract(t, ct, "nft_isOwner", []byte("0|7"), nil, "hive:someone", true, uint(100_000_000), "true")
+	// burn edition 7
+	CallContract(t, ct, "nft_burn", PayloadToJSON("0|7"), nil, "hive:someone", true, uint(1_000_000_000), "")
+	CallContract(t, ct, "nft_isBurned", []byte("0|7"), nil, "hive:someone", true, uint(100_000_000), "true")
+	// try to transfer edition 23
+	CallContract(t, ct, "nft_transfer",
+		[]byte("0|7|hive:someoneelse_0"),
+		nil, "hive:someone", false, uint(1_000_000_000), "")
+	// burn edition 8 by someone else (should fail)
+	CallContract(t, ct, "nft_burn", PayloadToJSON("0|8"), nil, "hive:someoneelse", false, uint(1_000_000_000), "")
 
 }

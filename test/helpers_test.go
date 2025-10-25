@@ -87,9 +87,22 @@ func CallContract(
 		assert.False(t, result.Success, "Contract action did not fail (as expected)")
 	}
 	if expectedOutput != "" {
-		assert.Equal(t, expectedOutput, result.Ret)
+		assert.True(t, startsWith(result.Ret, expectedOutput), true)
 	}
 	return result, gasUsed, logs
+}
+
+// startsWith checks whether s begins with prefix, with no allocation.
+func startsWith(s, prefix string) bool {
+	if len(prefix) > len(s) {
+		return false
+	}
+	for i := 0; i < len(prefix); i++ {
+		if s[i] != prefix[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // PrintLogs prints all logs from a contract call

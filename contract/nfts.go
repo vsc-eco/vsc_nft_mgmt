@@ -156,6 +156,7 @@ func Transfer(payload *string) *string {
 
 	// Perform state write
 	if *nftEdTotal > 1 {
+		loadCollection(target) // make sure the collection exists
 		// edition transfer
 		saveEditionOverride(id, effectiveEd, target)
 		emitTransfer(id, &effectiveEd, *nftOwnerCol, target)
@@ -164,6 +165,7 @@ func Transfer(payload *string) *string {
 			addEditionToOwnerMapping(id, effectiveEd, targetOwner)
 		}
 	} else {
+		loadCollection(target) // make sure the collection exists
 		// single nft transfer
 		saveNFTOwnerCollection(id, target)
 		emitTransfer(id, nil, *nftOwnerCol, target)
@@ -353,7 +355,7 @@ func markEditionBurned(nftID uint64, editionIndex uint32) {
 
 	var eo EditionOverride
 	if ptr == nil || *ptr == "" {
-		baseOwnerCol := *loadNFTOwnerCollection(nftID)
+		baseOwnerCol := *loadNFTOwnerCollection(nftID) // loading base owner
 		eo = EditionOverride{OwnerCollection: baseOwnerCol, Burned: true}
 	} else {
 		eo = parseEditionOverride(*ptr)

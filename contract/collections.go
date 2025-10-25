@@ -12,7 +12,7 @@ import (
 // CreateCollection creates a new NFT collection owned by the caller.
 // Payload format: "<name>|<desc>|<metadata>"
 // Name and description are validated for length. If either is invalid,
-// the function aborts. This function is non-reversible by design (immutabel).
+// the function aborts. This function is non-reversible by design as collections themselves are immutable.
 //
 //go:wasmexport col_create
 func CreateCollection(payload *string) *string {
@@ -24,6 +24,7 @@ func CreateCollection(payload *string) *string {
 	desc := parts[1]
 	meta := parts[2]
 
+	// validation
 	if len(name) == 0 || len(name) > maxNameLength {
 		sdk.Abort("invalid name length")
 	}
@@ -31,8 +32,8 @@ func CreateCollection(payload *string) *string {
 		sdk.Abort("description too long")
 	}
 
-	owner := *sdk.GetEnvKey("msg.sender")
-	colNumber := getNextCollectionId(owner)
+	creator := *sdk.GetEnvKey("msg.sender")
+	colNumber := getNextCollectionId(creator) // get collection count as next id
 
 	id := colNumber
 	txID := sdk.GetEnvKey("tx.id")
@@ -46,10 +47,10 @@ func CreateCollection(payload *string) *string {
 	b = append(b, '|')
 	b = append(b, meta...)
 
-	idxKey := colIndexKey(owner, strconv.FormatUint(colNumber, 10))
-	sdk.StateSetObject(idxKey, string(b)) // store collection
-	updateUserCollectionCount(id, owner)
-	EmitCollectionCreatedEvent(id, owner)
+	idxKey := colIndexKey(creator, strconv.FormatUint(colNumber, 10))
+	sdk.StateSetObject(idxKey, string(b))   // store collection
+	updateUserCollectionCount(id, creator)  // increment collection counter for user
+	EmitCollectionCreatedEvent(id, creator) // emit event for indexers
 
 	return nil
 }
