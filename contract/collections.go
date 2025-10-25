@@ -82,26 +82,3 @@ func colIndexKey(owner, col string) string {
 	b = append(b, col...)
 	return string(b)
 }
-
-// userColCountKey represents the state key for the collection incrementer per user
-func userColCountKey(owner string) string { return "uc_" + owner }
-
-// getNextCollectionId returns a new collectionId uint64 for a given user
-func getNextCollectionId(owner string) uint64 {
-	// Read caller's next collection index
-	ptr := sdk.StateGetObject(userColCountKey(owner))
-	var idx uint64
-	if ptr == nil || *ptr == "" {
-		idx = 0
-	} else {
-		idx = mustParseUint64(*ptr)
-	}
-	return idx
-}
-
-// updateUserCollectionCount increments the collectionId for a given user
-func updateUserCollectionCount(count uint64, owner string) {
-	nbuf := make([]byte, 0, 20)
-	nbuf = strconv.AppendUint(nbuf, count+1, 10)
-	sdk.StateSetObject(userColCountKey(owner), string(nbuf))
-}

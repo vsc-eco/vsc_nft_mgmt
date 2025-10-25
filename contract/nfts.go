@@ -52,7 +52,7 @@ func Mint(payload *string) *string {
 	validateMintArgs(name, desc)
 
 	// Create NFT
-	nftID := newNFTID()
+	nftID := getNFTCount()
 	creatorPtr := sdk.GetEnvKey("msg.sender")
 	creator := *creatorPtr
 
@@ -64,7 +64,7 @@ func Mint(payload *string) *string {
 	}
 
 	EmitMintEvent(nftID, creator, ownerCol, editions)
-	setCount(NFTsCount, nftID+1)
+	setNFTCount(nftID + 1)
 	return nil
 }
 

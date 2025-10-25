@@ -37,6 +37,8 @@ const (
 //
 
 // packU64LEInline writes uint64 into dst in little-endian format.
+//
+//go:inline
 func packU64LEInline(x uint64, dst []byte) {
 	dst[0] = byte(x)
 	dst[1] = byte(x >> 8)
@@ -49,6 +51,8 @@ func packU64LEInline(x uint64, dst []byte) {
 }
 
 // packU32LEInline writes uint32 into dst in little-endian format.
+//
+//go:inline
 func packU32LEInline(x uint32, dst []byte) {
 	dst[0] = byte(x)
 	dst[1] = byte(x >> 8)
@@ -105,7 +109,6 @@ func editionOverrideKey(nftID uint64, editionIndex uint32) string {
 	return string(buf[:])
 }
 
-// TODO: continue here
 // ownedIndexKey tracks editions owned by a specific address.
 // Uses heap for the owner suffix since length is variable.
 func ownedIndexKey(nftID uint64, owner string) string {
@@ -124,12 +127,9 @@ func ownedIndexKey(nftID uint64, owner string) string {
 // These store the latest assigned ID for NFTs and Collections.
 //
 
-// newNFTID gets the next NFT ID.
-func newNFTID() uint64 { return getCount(NFTsCount) }
-
 // getCount retrieves a numeric counter (defaults to 0).
-func getCount(key string) uint64 {
-	ptr := sdk.StateGetObject(key)
+func getNFTCount() uint64 {
+	ptr := sdk.StateGetObject("nft_count")
 	if ptr == nil || *ptr == "" {
 		return 0
 	}
@@ -137,20 +137,42 @@ func getCount(key string) uint64 {
 }
 
 // setCount writes a monotonically increasing counter.
-func setCount(key string, n uint64) {
+func setNFTCount(n uint64) {
 	buf := make([]byte, 0, 20)
 	buf = strconv.AppendUint(buf, n, 10)
-	sdk.StateSetObject(key, string(buf))
+	sdk.StateSetObject("nft_count", string(buf))
 }
 
-//
+// userColCountKey represents the state key for the collection incrementer per user
+func userColCountKey(owner string) string { return "uc_" + owner }
+
+// getNextCollectionId returns a new collectionId uint64 for a given user
+func getNextCollectionId(owner string) uint64 {
+	// Read caller's next collection index
+	ptr := sdk.StateGetObject(userColCountKey(owner))
+	var idx uint64
+	if ptr == nil || *ptr == "" {
+		idx = 0
+	} else {
+		idx = mustParseUint64(*ptr)
+	}
+	return idx
+}
+
+// updateUserCollectionCount increments the collectionId for a given user
+func updateUserCollectionCount(count uint64, owner string) {
+	nbuf := make([]byte, 0, 20)
+	nbuf = strconv.AppendUint(nbuf, count+1, 10)
+	sdk.StateSetObject(userColCountKey(owner), string(nbuf))
+}
+
 // ======================================
 // Fast Numeric Parsing (Zero Allocation)
 // ======================================
 //
 // parseUint64Field parses substring [a:b] into uint64, aborting on first error.
 //
-
+//go:inline
 func parseUint64Field(s string, a, b int) uint64 {
 	var v uint64
 	if a >= b {
@@ -166,19 +188,21 @@ func parseUint64Field(s string, a, b int) uint64 {
 	return v
 }
 
+//go:inline
 func parseUint32Field(s string, a, b int) uint32 {
 	return uint32(parseUint64Field(s, a, b))
 }
 
-//
 // ===============================
 // Delimiter-Based Field Splitting
 // ===============================
 //
-// These functions are hand-optimized for hot path ABI parsing.
+// These functions are optimized for hot path ABI parsing.
 //
 
 // split2 finds the first comma separating two non-empty values: "A,B".
+//
+//go:inline
 func split2(s string) int {
 	for i := 0; i < len(s); i++ {
 		if s[i] == ',' {
@@ -198,6 +222,8 @@ func split2(s string) int {
 // ================
 
 // indexByte returns the index of c in s or -1 if missing.
+//
+//go:inline
 func indexByte(s string, c byte) int {
 	for i := 0; i < len(s); i++ {
 		if s[i] == c {
@@ -208,6 +234,8 @@ func indexByte(s string, c byte) int {
 }
 
 // splitOwnerCollection expects "<owner>_<collection>" strictly.
+//
+//go:inline
 func splitOwnerCollection(ownerCollection string) (string, string) {
 	idx := indexByte(ownerCollection, '_')
 	if idx <= 0 || idx >= len(ownerCollection)-1 {
@@ -224,6 +252,8 @@ func stringToUint32(s *string) *uint32 {
 }
 
 // mustParseUint64 parses a full string into uint64.
+//
+//go:inline
 func mustParseUint64(s string) uint64 {
 	return parseUint64Field(s, 0, len(s))
 }
@@ -274,13 +304,10 @@ func Uint32ListToCSV(list []uint32) string {
 }
 
 // packU64LE appends uint64 x to byte slice b in little-endian format.
+//
+//go:inline
 func packU64LE(x uint64, b []byte) []byte {
 	return append(b, byte(x), byte(x>>8), byte(x>>16), byte(x>>24), byte(x>>32), byte(x>>40), byte(x>>48), byte(x>>56))
-}
-
-// packU32LE appends uint32 x to byte slice b in little-endian format.
-func packU32LE(x uint32, b []byte) []byte {
-	return append(b, byte(x), byte(x>>8), byte(x>>16), byte(x>>24))
 }
 
 // csv lookup and remover for market contract managment
