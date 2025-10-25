@@ -267,6 +267,34 @@ func TestTransfersSuccess(t *testing.T) {
 	CallContract(t, ct, "nft_isOwner", []byte("0"), nil, "hive:someone", true, uint(100_000_000), "true")
 }
 
+func TestTransfersSuccessBurnProtection(t *testing.T) {
+	ct := SetupContractTest()
+	// set market
+	CallContract(t, ct, "add_market", []byte("vscxyz"), nil, "hive:contractowner", true, uint(1_000_000_000), "")
+	// create a collection for sender
+	CallContract(t, ct, "col_create", []byte("collectionA|my description|img=testurl"), nil, "hive:someone", true, uint(1_000_000_000), "")
+
+	// create a collection for receiver
+	CallContract(t, ct, "col_create", []byte("collectionB|my description|img=testurl"), nil, "hive:someoneelse", true, uint(1_000_000_000), "")
+
+	// mint nft
+	CallContract(t, ct, "nft_mint",
+		[]byte("hive:someone_0|name|description|false|1|test=123,test2=abc"),
+		nil, "hive:someone", true, uint(1_000_000_000), "")
+
+	// transfer nft by minter (should success)
+	CallContract(t, ct, "nft_transfer",
+		[]byte("0||hive:someoneelse_0"),
+		nil, "hive:someone", true, uint(1_000_000_000), "")
+
+	CallContract(t, ct, "nft_burn", []byte("0"), nil, "hive:someoneelse", true, uint(100_000_000), "")
+
+	// transfer nft by market (should fail bc it i burned)
+	CallContract(t, ct, "nft_transfer",
+		[]byte("0||hive:someone_0"),
+		nil, "vscxyz", false, uint(1_000_000_000), "msg: nft is burned")
+}
+
 // test transfers with excepted fails
 func TestTransfersFails(t *testing.T) {
 	ct := SetupContractTest()
