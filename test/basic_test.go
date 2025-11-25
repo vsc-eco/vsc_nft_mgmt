@@ -375,6 +375,7 @@ func TestEditionTransfers(t *testing.T) {
 		[]byte("0|99999|hive:someone_0"),
 		nil, "hive:someoneelse", true, uint(1_000_000_000), "")
 	CallContract(t, ct, "nft_isOwner", []byte("0|99999"), nil, "hive:someone", true, uint(100_000_000), "true")
+	CallContract(t, ct, "nft_hasNFTEdition", []byte("0|hive:someone"), nil, "hive:someone", true, uint(100_000_000), "true")
 	CallContract(t, ct, "nft_ownerColOf", []byte("0|99999"), nil, "hive:someone", true, uint(100_000_000), "hive:someone_0")
 
 	// // // maliciou trying to transfer edition no 5000 not by owner (should fail)
