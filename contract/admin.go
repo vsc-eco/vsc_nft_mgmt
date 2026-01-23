@@ -18,6 +18,13 @@ func AddMarketContract(addr *string) *string {
 	if addr == nil || *addr == "" {
 		sdk.Abort("market address required")
 	}
+	// Basic address validation: must be at least 3 chars and not contain pipe delimiter
+	if len(*addr) < 3 {
+		sdk.Abort("invalid market address: too short")
+	}
+	if indexByte(*addr, '|') != -1 {
+		sdk.Abort("invalid market address: contains delimiter")
+	}
 	sender := sdk.GetEnvKey("msg.sender")
 	if sender == nil || *sender != contractOwner {
 		sdk.Abort("only contract owner can set market")
@@ -36,6 +43,7 @@ func AddMarketContract(addr *string) *string {
 		// if we do not have any market contract yet
 		sdk.StateSetObject(marketKey, *addr)
 	}
+	emitMarketAdd(*addr)
 	return nil
 }
 
@@ -60,6 +68,7 @@ func RemoveMarketContract(addr *string) *string {
 
 	newCSV := removeFromCSV(*existing, *addr)
 	sdk.StateSetObject(marketKey, newCSV)
+	emitMarketRemove(*addr)
 	return nil
 }
 

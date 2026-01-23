@@ -31,6 +31,9 @@ func CreateCollection(payload *string) *string {
 	if len(desc) > maxDescLength {
 		sdk.Abort("description too long")
 	}
+	if len(meta) > maxMetaLength {
+		sdk.Abort("metadata too large")
+	}
 
 	creator := *sdk.GetEnvKey("msg.sender")
 	colNumber := getNextCollectionId(creator) // get collection count as next id
@@ -50,7 +53,7 @@ func CreateCollection(payload *string) *string {
 	idxKey := colIndexKey(creator, strconv.FormatUint(colNumber, 10))
 	sdk.StateSetObject(idxKey, string(b))   // store collection
 	updateUserCollectionCount(id, creator)  // increment collection counter for user
-	EmitCollectionCreatedEvent(id, creator) // emit event for indexers
+	EmitCollectionCreatedEvent(id, creator, name, desc, meta) // emit event for indexers
 
 	return nil
 }

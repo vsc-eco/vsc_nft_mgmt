@@ -40,6 +40,9 @@ func Mint(payload *string) *string {
 	var editions uint32 = 1
 	if edStr := parts[4]; len(edStr) > 0 {
 		editions = parseUint32Field(edStr, 0, len(edStr))
+		if editions == 0 {
+			sdk.Abort("editions must be at least 1")
+		}
 	}
 
 	meta := parts[5]
@@ -49,7 +52,7 @@ func Mint(payload *string) *string {
 
 	// Validate arguments and collection existence
 	loadCollection(ownerCol) // ensures "<owner>_<collection>" exists
-	validateMintArgs(name, desc)
+	validateMintArgs(name, desc, meta)
 
 	// Create NFT
 	nftID := getNFTCount()
@@ -63,7 +66,7 @@ func Mint(payload *string) *string {
 		saveNFTEditionCount(nftID, editions)
 	}
 
-	EmitMintEvent(nftID, creator, ownerCol, editions)
+	EmitMintEvent(nftID, creator, ownerCol, editions, name, desc, meta, single)
 	setNFTCount(nftID + 1)
 	return nil
 }
@@ -141,12 +144,17 @@ func Transfer(payload *string) *string {
 
 	// Authorization logic
 	if !collectionOnly {
-		if !isAuthorized(caller, &currentOwner, marketContracts) {
-			sdk.Abort("only market or owner can transfer")
-		}
+		// Check singleTransfer restriction FIRST (before market authorization)
+		// Soulbound NFTs can only be transferred once by the creator
 		creator, single := loadNFTCreator(id)
 		if single && *creator != currentOwner {
+			// NFT is soulbound and not owned by creator - no transfers allowed
+			// Not even by market contracts (soulbound means truly bound)
 			sdk.Abort("nft bound to owner")
+		}
+		// Now check if caller is authorized (owner or market)
+		if !isAuthorized(caller, &currentOwner, marketContracts) {
+			sdk.Abort("only market or owner can transfer")
 		}
 	} else {
 		if !isAuthorized(caller, &currentOwner, marketContracts) {
@@ -162,6 +170,7 @@ func Transfer(payload *string) *string {
 		emitTransfer(id, &effectiveEd, *nftOwnerCol, target)
 		// Update owned index only when actual owner changes
 		if !collectionOnly {
+			removeEditionFromOwnerMapping(id, effectiveEd, currentOwner)
 			addEditionToOwnerMapping(id, effectiveEd, targetOwner)
 		}
 	} else {
@@ -210,20 +219,15 @@ func Burn(nftId *string) *string {
 		}
 	}
 
-	// Load only owner+collection (fast lookup, no metadata)
-	ownerColPtr := loadNFTOwnerCollection(nftID)
-	ownerCol := *ownerColPtr
-	owner, collection := splitOwnerCollection(ownerCol)
-
-	// Authorization: only the owner can burn
-	caller := sdk.GetEnvKey("msg.caller")
-	if !isAuthorized(caller, &owner, nil) {
-		sdk.Abort("only owner can burn")
-	}
-
-	// Check editions
+	// Load base ownership and edition count
+	baseOwnerColPtr := loadNFTOwnerCollection(nftID)
+	baseOwnerCol := *baseOwnerColPtr
 	edCountPtr := loadNFTEditionCount(nftID)
 	edCount := *edCountPtr
+
+	// Determine actual owner based on edition
+	var ownerCol string
+	var editionToBurn uint32
 
 	if edPtr != nil {
 		// Attempting to burn a specific edition
@@ -233,16 +237,28 @@ func Burn(nftId *string) *string {
 		if *edPtr >= edCount {
 			sdk.Abort("edition index out of range")
 		}
-		markEditionBurned(nftID, *edPtr)
+		editionToBurn = *edPtr
+		// Resolve edition-specific owner (critical: must check actual edition owner)
+		ownerCol = resolveEditionOwnerAndCollection(nftID, baseOwnerCol, editionToBurn)
 	} else {
 		// Base-level burn request
 		if edCount > 1 {
 			sdk.Abort("edition required to burn multi-edition NFT")
 		}
 		// Single-edition NFT; edition index implicitly 0
-		markEditionBurned(nftID, 0)
+		editionToBurn = 0
+		ownerCol = baseOwnerCol
 	}
 
+	owner, collection := splitOwnerCollection(ownerCol)
+
+	// Authorization: only the actual edition owner can burn
+	caller := sdk.GetEnvKey("msg.caller")
+	if !isAuthorized(caller, &owner, nil) {
+		sdk.Abort("only owner can burn")
+	}
+
+	markEditionBurned(nftID, editionToBurn)
 	emitBurn(nftID, edPtr, owner, collection)
 	return nil
 }
@@ -346,7 +362,8 @@ func parseEditionOverride(s string) EditionOverride {
 func saveEditionOverride(nftID uint64, editionIndex uint32, ownerCollection string) {
 	val := editionOverrideToStr(EditionOverride{OwnerCollection: ownerCollection, Burned: false})
 	sdk.StateSetObject(editionOverrideKey(nftID, editionIndex), val)
-	addEditionToOwnerMapping(nftID, editionIndex, ownerCollection[:indexByte(ownerCollection, '_')])
+	// Note: Owner mapping is now handled by the transfer logic to properly
+	// remove from previous owner before adding to new owner
 }
 
 func markEditionBurned(nftID uint64, editionIndex uint32) {
@@ -354,14 +371,19 @@ func markEditionBurned(nftID uint64, editionIndex uint32) {
 	ptr := sdk.StateGetObject(key)
 
 	var eo EditionOverride
+	var alreadyBurned bool
 	if ptr == nil || *ptr == "" {
 		baseOwnerCol := *loadNFTOwnerCollection(nftID) // loading base owner
 		eo = EditionOverride{OwnerCollection: baseOwnerCol, Burned: true}
 	} else {
 		eo = parseEditionOverride(*ptr)
+		alreadyBurned = eo.Burned
 		eo.Burned = true
 	}
 	sdk.StateSetObject(key, editionOverrideToStr(eo))
+	if !alreadyBurned {
+		incrementBurnedCount(nftID)
+	}
 }
 
 func loadEditionOverride(nftID uint64, editionIndex uint32) *EditionOverride {
@@ -383,11 +405,37 @@ func addEditionToOwnerMapping(nftID uint64, editionIndex uint32, owner string) {
 	buf := []byte{}
 	if ptr != nil && *ptr != "" {
 		buf = []byte(*ptr)
+		// Check if edition already exists to prevent duplicates
+		for i := 0; i+4 <= len(buf); i += 4 {
+			if binary.BigEndian.Uint32(buf[i:i+4]) == editionIndex {
+				return // Already exists, skip adding
+			}
+		}
 	}
 	var tmp [4]byte
 	binary.BigEndian.PutUint32(tmp[:], editionIndex)
 	buf = append(buf, tmp[:]...)
 	sdk.StateSetObject(key, string(buf))
+}
+
+func removeEditionFromOwnerMapping(nftID uint64, editionIndex uint32, owner string) {
+	key := ownedIndexKey(nftID, owner)
+	ptr := sdk.StateGetObject(key)
+	if ptr == nil || *ptr == "" {
+		return // Nothing to remove
+	}
+	buf := []byte(*ptr)
+	newBuf := make([]byte, 0, len(buf))
+	for i := 0; i+4 <= len(buf); i += 4 {
+		if binary.BigEndian.Uint32(buf[i:i+4]) != editionIndex {
+			newBuf = append(newBuf, buf[i:i+4]...)
+		}
+	}
+	if len(newBuf) == 0 {
+		sdk.StateSetObject(key, "") // Clear if empty
+	} else {
+		sdk.StateSetObject(key, string(newBuf))
+	}
 }
 
 func resolveEditionOwnerAndCollection(nftID uint64, base string, editionIndex uint32) string {
@@ -402,16 +450,6 @@ func resolveEditionOwnerAndCollection(nftID uint64, base string, editionIndex ui
 // ======================
 //
 // These are on the hot path and written with zero-alloc intent.
-
-func idxStart(parts []string, i int) int {
-	pos := 0
-	for k := 0; k < i; k++ {
-		pos += len(parts[k]) + 1
-	}
-	return pos
-}
-
-// func idxEnd(parts []string, i int) int { return idxStart(parts, i) + len(parts[i]) }
 
 func split2Str(s string) (string, string) {
 	for i := 0; i < len(s); i++ {
@@ -428,12 +466,15 @@ func split2Str(s string) (string, string) {
 // ========================
 //
 // validateMintArgs performs length constraints checks when creating new NFTs.
-func validateMintArgs(name, desc string) {
+func validateMintArgs(name, desc, meta string) {
 	if len(name) == 0 || len(name) > maxNameLength {
 		sdk.Abort("invalid name length")
 	}
 	if len(desc) > maxDescLength {
 		sdk.Abort("description too long")
+	}
+	if len(meta) > maxMetaLength {
+		sdk.Abort("metadata too large")
 	}
 }
 

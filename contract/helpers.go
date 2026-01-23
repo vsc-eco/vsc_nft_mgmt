@@ -19,12 +19,13 @@ import (
 //
 
 const (
-	kNFTCore    byte = 0x01 // NFT core metadata: "tx|name|desc|meta"
-	kOwner      byte = 0x02 // Owner+Collection mapping per NFT ID
-	kCreator    byte = 0x03 // Creator address + transfer-flag
-	kEdCount    byte = 0x04 // Edition count
-	kEdOverride byte = 0x05 // Edition-specific overrides (owner or burned)
-	kOwnedIdx   byte = 0x06 // Owned edition index for quick lookup
+	kNFTCore     byte = 0x01 // NFT core metadata: "tx|name|desc|meta"
+	kOwner       byte = 0x02 // Owner+Collection mapping per NFT ID
+	kCreator     byte = 0x03 // Creator address + transfer-flag
+	kEdCount     byte = 0x04 // Edition count
+	kEdOverride  byte = 0x05 // Edition-specific overrides (owner or burned)
+	kOwnedIdx    byte = 0x06 // Owned edition index for quick lookup
+	kBurnedCount byte = 0x07 // Burned edition count per NFT
 )
 
 //
@@ -119,6 +120,32 @@ func ownedIndexKey(nftID uint64, owner string) string {
 	return string(b)
 }
 
+// burnedCountKey stores the count of burned editions for an NFT.
+func burnedCountKey(nftID uint64) string {
+	var buf [9]byte
+	buf[0] = kBurnedCount
+	packU64LEInline(nftID, buf[1:])
+	return string(buf[:])
+}
+
+// loadBurnedCount returns the number of burned editions for an NFT.
+func loadBurnedCount(nftID uint64) uint32 {
+	ptr := sdk.StateGetObject(burnedCountKey(nftID))
+	if ptr == nil || *ptr == "" {
+		return 0
+	}
+	return parseUint32Field(*ptr, 0, len(*ptr))
+}
+
+// incrementBurnedCount increases the burned edition count by 1.
+func incrementBurnedCount(nftID uint64) {
+	count := loadBurnedCount(nftID)
+	count++
+	b := make([]byte, 0, 11)
+	b = strconv.AppendUint(b, uint64(count), 10)
+	sdk.StateSetObject(burnedCountKey(nftID), string(b))
+}
+
 //
 // ===============
 // Global Counters
@@ -190,7 +217,11 @@ func parseUint64Field(s string, a, b int) uint64 {
 
 //go:inline
 func parseUint32Field(s string, a, b int) uint32 {
-	return uint32(parseUint64Field(s, a, b))
+	v := parseUint64Field(s, a, b)
+	if v > 4294967295 {
+		sdk.Abort("uint32 overflow")
+	}
+	return uint32(v)
 }
 
 // ===============================
@@ -247,6 +278,9 @@ func splitOwnerCollection(ownerCollection string) (string, string) {
 // stringToUint32 safely parses a decimal string pointer into a uint32 pointer.
 func stringToUint32(s *string) *uint32 {
 	v := parseUint64Field(*s, 0, len(*s))
+	if v > 4294967295 {
+		sdk.Abort("uint32 overflow")
+	}
 	x := uint32(v)
 	return &x
 }

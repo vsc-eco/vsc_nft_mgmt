@@ -468,6 +468,81 @@ Returns:
 
 
 
+### 🔢 **Get NFT Count**
+
+**Action:** `nft_count`
+
+Payload: *(ignored)*
+
+Returns: Total number of NFTs minted
+
+```
+42
+```
+
+
+
+### ✅ **Check NFT Exists**
+
+**Action:** `nft_exists`
+
+Payload:
+
+```
+<nftID>
+```
+
+Returns: `"true"` or `"false"`
+
+
+
+### 💚 **Check Edition Alive**
+
+**Action:** `nft_isAlive`
+
+Payload:
+
+```
+<nftID>
+<nftID>|<editionIndex>
+```
+
+Returns: `"true"` if edition exists and is not burned, `"false"` otherwise
+
+
+
+### 📊 **Get Current Supply**
+
+**Action:** `nft_currentSupply`
+
+Payload:
+
+```
+<nftID>
+```
+
+Returns: Current circulating supply (total editions minus burned)
+
+```
+8
+```
+
+
+
+### 🏛 **Get Market Contracts**
+
+**Action:** `get_markets`
+
+Payload: *(ignored)*
+
+Returns: Pipe-delimited list of registered market contract addresses
+
+```
+hive:market1|hive:market2
+```
+
+
+
 
 # 🔔 **On-Chain Events**
 
@@ -493,29 +568,37 @@ Each event follows this format:
 
 ## 📦 **Event Summary Table**
 
-| Event Type   | Triggered By   | Attributes (Compact JSON)                                                 |
-|  | -- | - |
-| `collection` | `col_create`   | `{ "id":<collectionID>, "cr":"<creator>" }`                               |
-| `mint`       | `nft_mint`     | `{ "id":<nftID>, "cr":"<creator>", "oc":"<owner_col>", "ed":<editions> }` |
-| `transfer`   | `nft_transfer` | `{ "id":<nftID>, "ed":<edition?>, "fr":"<from>", "to":"<to>" }`           |
-| `burn`       | `nft_burn`     | `{ "id":<nftID>, "ed":<edition?>, "ow":"<owner>" }`                       |
+| Event Type      | Triggered By    | Attributes                                                                                      |
+| --------------- | --------------- | ----------------------------------------------------------------------------------------------- |
+| `collection`    | `col_create`    | `{ "id", "cr", "nm", "ds", "mt" }`                                                              |
+| `mint`          | `nft_mint`      | `{ "id", "cr", "oc", "ed", "nm", "ds", "mt", "st" }`                                            |
+| `transfer`      | `nft_transfer`  | `{ "id", "ed"?, "fr", "to" }`                                                                   |
+| `burn`          | `nft_burn`      | `{ "id", "ed"?, "ow", "col" }`                                                                  |
+| `market_add`    | `add_market`    | `{ "addr" }`                                                                                    |
+| `market_remove` | `remove_market` | `{ "addr" }`                                                                                    |
 
-> ⚠ `ed` attribute is only emitted if NFT has multiple editions.
+> ⚠ `ed` attribute is only emitted for edition-specific operations on multi-edition NFTs.
 
 
 
 ## 🧱 Event Field Glossary
 
-| Key  | Meaning                                                  |
-| - | -- |
-| `id` | The numeric NFT or collection ID                         |
-| `cr` | Creator address (minter or collection creator)           |
-| `oc` | `"owner_collection"` formatted as `<owner>_<collection>` |
-| `ed` | Edition index (optional for editioned NFTs)              |
-| `fr` | From address (current owner)                             |
-| `to` | Target owner                                             |
-| `ow` | Owner performing the burn                                |
-| `tx` | Immutable transaction ID                                 |
+| Key    | Meaning                                                  |
+| ------ | -------------------------------------------------------- |
+| `id`   | The numeric NFT or collection ID                         |
+| `cr`   | Creator address (minter or collection creator)           |
+| `oc`   | `"owner_collection"` formatted as `<owner>_<collection>` |
+| `ed`   | Edition count (mint) or edition index (transfer/burn)    |
+| `nm`   | Name of the NFT or collection                            |
+| `ds`   | Description of the NFT or collection                     |
+| `mt`   | Metadata string (opaque)                                 |
+| `st`   | Single-transfer flag (`true`/`false` for soulbound)      |
+| `fr`   | From owner_collection (transfer source)                  |
+| `to`   | To owner_collection (transfer target)                    |
+| `ow`   | Owner performing the burn                                |
+| `col`  | Collection index (in burn events)                        |
+| `addr` | Market contract address (in market events)               |
+| `tx`   | Immutable transaction ID                                 |
 
 
 
@@ -533,7 +616,10 @@ Occurs when a user creates a new collection.
   "type": "collection",
   "attributes": {
     "id": 0,
-    "cr": "hive:alice"
+    "cr": "hive:alice",
+    "nm": "My Art Collection",
+    "ds": "Best of my artworks",
+    "mt": "ipfs://Qm123abc"
   },
   "tx": "TX123ABC"
 }
@@ -554,7 +640,11 @@ Triggered when a new NFT is minted into a collection.
     "id": 1001,
     "cr": "hive:alice",
     "oc": "hive:alice_0",
-    "ed": 1
+    "ed": 1,
+    "nm": "Golden Sword",
+    "ds": "Legendary blade",
+    "mt": "{\"rarity\":\"legendary\"}",
+    "st": false
   },
   "tx": "TX456ABC"
 }
@@ -569,7 +659,11 @@ Triggered when a new NFT is minted into a collection.
     "id": 1002,
     "cr": "hive:alice",
     "oc": "hive:alice_0",
-    "ed": 10
+    "ed": 10,
+    "nm": "Trading Card",
+    "ds": "Limited series",
+    "mt": "ipfs://QmMetaHash",
+    "st": false
   },
   "tx": "TX457ABC"
 }
@@ -627,7 +721,8 @@ Marks the NFT or specific edition as permanently burned (cannot be reactivated).
   "type": "burn",
   "attributes": {
     "id": 1001,
-    "ow": "hive:alice"
+    "ow": "hive:alice",
+    "col": "0"
   },
   "tx": "TX900DEF"
 }
@@ -641,9 +736,46 @@ Marks the NFT or specific edition as permanently burned (cannot be reactivated).
   "attributes": {
     "id": 1002,
     "ed": 1,
-    "ow": "hive:alice"
+    "ow": "hive:alice",
+    "col": "0"
   },
   "tx": "TX901DEF"
+}
+```
+
+
+
+### 🏛 **Market Add Event**
+
+Triggered when a marketplace contract is registered by the contract owner.
+
+**Example:**
+
+```json
+{
+  "type": "market_add",
+  "attributes": {
+    "addr": "hive:marketplace"
+  },
+  "tx": "TX100ABC"
+}
+```
+
+
+
+### 🏛 **Market Remove Event**
+
+Triggered when a marketplace contract is removed by the contract owner.
+
+**Example:**
+
+```json
+{
+  "type": "market_remove",
+  "attributes": {
+    "addr": "hive:marketplace"
+  },
+  "tx": "TX101ABC"
 }
 ```
 
@@ -729,8 +861,13 @@ NFTs use compact binary-prefixed keys internally (e.g., `\x01<idLE>`). These are
 | Get creator | `"<id>"` | `"43"` |
 | Get meta | `"<id>"` | `"43"` |
 | Get supply | `"<id>"` | `"43"` |
+| Get current supply | `"<id>"` | `"43"` |
 | Is burned | `"<id>"` or `"<id>\|<ed>"`  | `"43\|0"` |
+| Is alive | `"<id>"` or `"<id>\|<ed>"` | `"43\|0"` |
 | Is single-transfer | `"<id>"`| `"43"` |
+| NFT exists | `"<id>"` | `"43"` |
+| NFT count | *(empty)* | `""` |
+| Get markets | *(empty)* | `""` |
 
 
 

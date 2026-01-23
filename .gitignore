@@ -6,3 +6,6 @@ hiveConfig.json
 identityConfig.json
 data/
 artifacts/
+.claude/
+.vscode/
+results.csv

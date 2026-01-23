@@ -215,7 +215,7 @@ func GetNFTOwnedEditions(payload *string) *string {
 	buf := []byte(*ptr)
 	N := len(buf) / 4
 	editions := make([]uint32, 0, N)
-	for i := 0; i+3 < len(buf); i += 4 {
+	for i := 0; i+4 <= len(buf); i += 4 {
 		editions = append(editions, binary.BigEndian.Uint32(buf[i:i+4]))
 	}
 	csv := Uint32ListToCSV(editions)
@@ -399,6 +399,32 @@ func GetNFTSupply(id *string) *string {
 	return &s
 }
 
+// GetNFTCurrentSupply returns the current circulating supply for an NFT.
+//
+// Payload: "<id>"
+// Returns: "<currentSupply>" as string (total editions - burned editions)
+// This is useful for tracking how many editions are still in circulation.
+//
+//go:wasmexport nft_currentSupply
+func GetNFTCurrentSupply(id *string) *string {
+	if id == nil || *id == "" {
+		sdk.Abort("empty id")
+	}
+	nftID := parseUint64Field(*id, 0, len(*id))
+	totalEditions := *loadNFTEditionCount(nftID)
+	burnedCount := loadBurnedCount(nftID)
+
+	currentSupply := uint32(0)
+	if totalEditions > burnedCount {
+		currentSupply = totalEditions - burnedCount
+	}
+
+	b := make([]byte, 0, 10)
+	b = strconv.AppendUint(b, uint64(currentSupply), 10)
+	s := string(b)
+	return &s
+}
+
 // GetNFTBurnState returns whether a specific edition is burned.
 //
 // Payload formats:
@@ -479,4 +505,97 @@ func IsNFTSingleTransfer(id *string) *string {
 	}
 	f := "false"
 	return &f
+}
+
+// GetNFTCount returns the total number of NFTs minted.
+//
+// Payload: ignored (can be empty)
+// Returns: decimal string, e.g. "42"
+//
+//go:wasmexport nft_count
+func GetNFTCount(_ *string) *string {
+	count := getNFTCount()
+	b := make([]byte, 0, 20)
+	b = strconv.AppendUint(b, count, 10)
+	s := string(b)
+	return &s
+}
+
+// NFTExists checks whether an NFT with the given ID exists.
+//
+// Payload: "<id>"
+// Returns: "true" or "false"
+// This is useful for validating NFT IDs before operations.
+//
+//go:wasmexport nft_exists
+func NFTExists(id *string) *string {
+	if id == nil || *id == "" {
+		sdk.Abort("empty id")
+	}
+	nftID := parseUint64Field(*id, 0, len(*id))
+	ptr := sdk.StateGetObject(nftCoreKey(nftID))
+	if ptr == nil || *ptr == "" {
+		f := "false"
+		return &f
+	}
+	t := "true"
+	return &t
+}
+
+// IsEditionAlive checks if a specific edition exists and is not burned.
+//
+// Payload formats:
+//
+//	"<id>"           → for single-edition NFTs (implicitly edition 0)
+//	"<id>|<edition>" → for multi-edition NFTs
+//
+// Returns: "true" if the edition exists and is not burned, "false" otherwise.
+// This is useful for marketplace contracts to verify tradeable editions.
+//
+//go:wasmexport nft_isAlive
+func IsEditionAlive(payload *string) *string {
+	if payload == nil || *payload == "" {
+		sdk.Abort("empty id")
+	}
+	p := *payload
+	idx := indexByte(p, '|')
+
+	var nftID uint64
+	var ed uint32
+
+	// Parse payload
+	if idx == -1 {
+		nftID = parseUint64Field(p, 0, len(p))
+		ed = 0
+	} else {
+		nftID = parseUint64Field(p, 0, idx)
+		if idx < len(p)-1 {
+			ed = parseUint32Field(p, idx+1, len(p))
+		} else {
+			sdk.Abort("invalid edition format")
+		}
+	}
+
+	// Check NFT exists
+	ptr := sdk.StateGetObject(nftCoreKey(nftID))
+	if ptr == nil || *ptr == "" {
+		f := "false"
+		return &f
+	}
+
+	// Check edition is in range
+	edTotal := *loadNFTEditionCount(nftID)
+	if ed >= edTotal {
+		f := "false"
+		return &f
+	}
+
+	// Check if burned
+	if eo := loadEditionOverride(nftID, ed); eo != nil && eo.Burned {
+		f := "false"
+		return &f
+	}
+
+	t := "true"
+	return &t
 }

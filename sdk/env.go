@@ -1,7 +1,8 @@
 package sdk
 
 type Env struct {
-	ContractId string `json:"contract.id"`
+	ContractId    string `json:"contract.id"`
+	ContractOwner string `json:"contract.owner"`
 
 	//About the calling tx & operation
 	TxId    string `json:"tx.id"`
@@ -23,4 +24,10 @@ type Env struct {
 	Payer Address `json:"msg.payer"`
 
 	Intents []Intent `json:"intents"`
+}
+
+type Env2 struct {
+	Auths        []string `json:"msg.required_auths"`
+	PostingAuths []string `json:"msg.required_posting_auths"`
+	Sender       string   `json:"msg.sender"`
 }

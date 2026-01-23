@@ -15,6 +15,36 @@ import (
 // sdk.Log and are intended for indexing off-chain behavior.
 //
 
+// appendEscapedJSON appends s to buf, escaping JSON special characters.
+// This ensures strings containing quotes, backslashes, or control chars don't break JSON.
+func appendEscapedJSON(buf []byte, s string) []byte {
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch c {
+		case '"':
+			buf = append(buf, '\\', '"')
+		case '\\':
+			buf = append(buf, '\\', '\\')
+		case '\n':
+			buf = append(buf, '\\', 'n')
+		case '\r':
+			buf = append(buf, '\\', 'r')
+		case '\t':
+			buf = append(buf, '\\', 't')
+		default:
+			if c < 0x20 {
+				// Other control characters: use \u00XX format
+				buf = append(buf, '\\', 'u', '0', '0')
+				buf = append(buf, "0123456789abcdef"[c>>4])
+				buf = append(buf, "0123456789abcdef"[c&0xf])
+			} else {
+				buf = append(buf, c)
+			}
+		}
+	}
+	return buf
+}
+
 // emitEventJSON emits a generic JSON-formatted event.
 // `attributesJSON` must already be a valid JSON object such as {"id":1,"cr":"alice"}.
 // This function wraps it with type and transaction metadata:
@@ -50,9 +80,9 @@ func emitEventJSON(eventType string, attributesJSON string) {
 //
 // EmitMintEvent formats and emits:
 //
-//	{"type":"mint","attributes":{"id":123,"cr":"addr","oc":"owner_col","ed":100},"tx":"<tx>"}
-func EmitMintEvent(id uint64, creator string, ownerCol string, editions uint32) {
-	attrs := make([]byte, 0, len(creator)+len(ownerCol)+32)
+//	{"type":"mint","attributes":{"id":123,"cr":"addr","oc":"owner_col","ed":100,"nm":"name","ds":"desc","mt":"meta","st":true},"tx":"<tx>"}
+func EmitMintEvent(id uint64, creator string, ownerCol string, editions uint32, name string, desc string, meta string, singleTransfer bool) {
+	attrs := make([]byte, 0, len(creator)+len(ownerCol)+len(name)+len(desc)+len(meta)+64)
 	attrs = append(attrs, '{')
 
 	// "id":123
@@ -72,6 +102,29 @@ func EmitMintEvent(id uint64, creator string, ownerCol string, editions uint32) 
 	// "ed":<number-of-editions>
 	attrs = append(attrs, ',', '"', 'e', 'd', '"', ':')
 	attrs = strconv.AppendUint(attrs, uint64(editions), 10)
+
+	// "nm":"name"
+	attrs = append(attrs, ',', '"', 'n', 'm', '"', ':', '"')
+	attrs = appendEscapedJSON(attrs, name)
+	attrs = append(attrs, '"')
+
+	// "ds":"desc"
+	attrs = append(attrs, ',', '"', 'd', 's', '"', ':', '"')
+	attrs = appendEscapedJSON(attrs, desc)
+	attrs = append(attrs, '"')
+
+	// "mt":"meta"
+	attrs = append(attrs, ',', '"', 'm', 't', '"', ':', '"')
+	attrs = appendEscapedJSON(attrs, meta)
+	attrs = append(attrs, '"')
+
+	// "st":true/false (singleTransfer)
+	attrs = append(attrs, ',', '"', 's', 't', '"', ':')
+	if singleTransfer {
+		attrs = append(attrs, 't', 'r', 'u', 'e')
+	} else {
+		attrs = append(attrs, 'f', 'a', 'l', 's', 'e')
+	}
 
 	attrs = append(attrs, '}')
 	emitEventJSON("mint", string(attrs))
@@ -117,11 +170,11 @@ func emitTransfer(id uint64, ed *uint32, from string, to string) {
 //
 // emitBurn logs a burn event for NFT or specific edition. Example:
 //
-//	{"type":"burn","attributes":{"id":123,"ed":1,"ow":"ownerAddr"},"tx":"<tx>"}
+//	{"type":"burn","attributes":{"id":123,"ed":1,"ow":"ownerAddr","col":"collectionId"},"tx":"<tx>"}
 //
 // Burn events are final and indicate permanent edition removal (or full NFT burn).
-func emitBurn(id uint64, ed *uint32, owner string, _ string) {
-	attrs := make([]byte, 0, len(owner)+48)
+func emitBurn(id uint64, ed *uint32, owner string, collection string) {
+	attrs := make([]byte, 0, len(owner)+len(collection)+56)
 	attrs = append(attrs, '{')
 
 	// "id":123
@@ -137,6 +190,11 @@ func emitBurn(id uint64, ed *uint32, owner string, _ string) {
 	// "ow":"owner"
 	attrs = append(attrs, ',', '"', 'o', 'w', '"', ':', '"')
 	attrs = append(attrs, owner...)
+	attrs = append(attrs, '"')
+
+	// "col":"collection"
+	attrs = append(attrs, ',', '"', 'c', 'o', 'l', '"', ':', '"')
+	attrs = append(attrs, collection...)
 	attrs = append(attrs, '"', '}')
 
 	emitEventJSON("burn", string(attrs))
@@ -148,11 +206,11 @@ func emitBurn(id uint64, ed *uint32, owner string, _ string) {
 //
 // EmitCollectionCreatedEvent emits:
 //
-//	{"type":"collection","attributes":{"id":5,"cr":"creator"},"tx":"<tx>"}
+//	{"type":"collection","attributes":{"id":5,"cr":"creator","nm":"name","ds":"desc","mt":"meta"},"tx":"<tx>"}
 //
 // This is only called once per collection id at creation time.
-func EmitCollectionCreatedEvent(id uint64, creator string) {
-	attrs := make([]byte, 0, len(creator)+32)
+func EmitCollectionCreatedEvent(id uint64, creator string, name string, desc string, meta string) {
+	attrs := make([]byte, 0, len(creator)+len(name)+len(desc)+len(meta)+64)
 	attrs = append(attrs, '{')
 
 	// "id":5
@@ -162,7 +220,56 @@ func EmitCollectionCreatedEvent(id uint64, creator string) {
 	// "cr":"creator"
 	attrs = append(attrs, ',', '"', 'c', 'r', '"', ':', '"')
 	attrs = append(attrs, creator...)
+	attrs = append(attrs, '"')
+
+	// "nm":"name"
+	attrs = append(attrs, ',', '"', 'n', 'm', '"', ':', '"')
+	attrs = appendEscapedJSON(attrs, name)
+	attrs = append(attrs, '"')
+
+	// "ds":"desc"
+	attrs = append(attrs, ',', '"', 'd', 's', '"', ':', '"')
+	attrs = appendEscapedJSON(attrs, desc)
+	attrs = append(attrs, '"')
+
+	// "mt":"meta"
+	attrs = append(attrs, ',', '"', 'm', 't', '"', ':', '"')
+	attrs = appendEscapedJSON(attrs, meta)
 	attrs = append(attrs, '"', '}')
 
 	emitEventJSON("collection", string(attrs))
+}
+
+// ======================
+// Market Contract Events
+// ======================
+//
+// emitMarketAdd logs when a market contract is registered. Example:
+//
+//	{"type":"market_add","attributes":{"addr":"vscmarket"},"tx":"<tx>"}
+func emitMarketAdd(addr string) {
+	attrs := make([]byte, 0, len(addr)+16)
+	attrs = append(attrs, '{')
+
+	// "addr":"marketAddr"
+	attrs = append(attrs, '"', 'a', 'd', 'd', 'r', '"', ':', '"')
+	attrs = append(attrs, addr...)
+	attrs = append(attrs, '"', '}')
+
+	emitEventJSON("market_add", string(attrs))
+}
+
+// emitMarketRemove logs when a market contract is removed. Example:
+//
+//	{"type":"market_remove","attributes":{"addr":"vscmarket"},"tx":"<tx>"}
+func emitMarketRemove(addr string) {
+	attrs := make([]byte, 0, len(addr)+16)
+	attrs = append(attrs, '{')
+
+	// "addr":"marketAddr"
+	attrs = append(attrs, '"', 'a', 'd', 'd', 'r', '"', ':', '"')
+	attrs = append(attrs, addr...)
+	attrs = append(attrs, '"', '}')
+
+	emitEventJSON("market_remove", string(attrs))
 }
