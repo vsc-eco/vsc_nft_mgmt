@@ -4,7 +4,10 @@ go 1.24.0
 
 toolchain go1.24.9
 
-require github.com/stretchr/testify v1.11.1
+require (
+	github.com/CosmWasm/tinyjson v0.9.0
+	github.com/stretchr/testify v1.11.1
+)
 
 require (
 	github.com/JustinKnueppel/go-result v1.0.0 // indirect
@@ -91,6 +94,7 @@ require (
 	github.com/jackpal/go-nat-pmp v1.0.2 // indirect
 	github.com/jbenet/go-temp-err-catcher v0.1.0 // indirect
 	github.com/jorrizza/ed2curve25519 v0.1.0 // indirect
+	github.com/josharian/intern v1.0.0 // indirect
 	github.com/kilic/bls12-381 v0.1.0 // indirect
 	github.com/klauspost/compress v1.17.11 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.9 // indirect
